@@ -12,8 +12,18 @@ fn main() -> eframe::Result<()> {
   let volume_level = Arc::new(AtomicU32::new(0));
   let running = Arc::new(AtomicBool::new(true));
 
-  // Clone for the audio thread
-  audio::spawn_volume_monitor(volume_level.clone(), running.clone());
+  let runtime = tokio::runtime::Builder::new_multi_thread()
+    .enable_all()
+    .build()
+    .expect("Failed to build Tokio runtime");
+
+  let _enter_guard = runtime.enter();
+
+  let _audio_handle = runtime.spawn_blocking({
+    let volume_level = volume_level.clone();
+    let running = running.clone();
+    move || audio::run_volume_monitor(volume_level, running)
+  });
 
   let options = eframe::NativeOptions {
     viewport: egui::ViewportBuilder::default()
@@ -26,9 +36,14 @@ fn main() -> eframe::Result<()> {
   };
 
   // Move running into the closure (VoiceApp will own it)
-  eframe::run_native(
+  let result = eframe::run_native(
     "Voice Widget",
     options,
     Box::new(move |_cc| Box::new(app::VoiceApp::new(volume_level, running))),
-  )
+  );
+
+  drop(_enter_guard);
+  drop(runtime);
+
+  result
 }

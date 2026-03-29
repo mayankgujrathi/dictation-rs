@@ -51,7 +51,9 @@ impl eframe::App for VoiceApp {
       self.running.store(false, Ordering::SeqCst);
 
       // Give audio thread time to finalize
-      std::thread::sleep(std::time::Duration::from_millis(500));
+      tokio::runtime::Handle::current().block_on(tokio::time::sleep(
+        std::time::Duration::from_millis(500),
+      ));
 
       ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }
