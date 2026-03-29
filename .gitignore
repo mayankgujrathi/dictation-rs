@@ -1,0 +1,17 @@
+# Rust build output
+/target
+
+# Audio recordings
+recording.wav
+dictation_temp.wav
+
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
