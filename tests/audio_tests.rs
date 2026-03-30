@@ -1,0 +1,301 @@
+//! Audio module tests
+//!
+//! Tests for pure functions and logic in the audio processing pipeline.
+
+use std::f32::consts::PI;
+
+/// Calculates RMS (Root Mean Square) from a slice of samples.
+/// This mirrors the logic used in the audio callback.
+pub fn calculate_rms(samples: &[f32]) -> f32 {
+  if samples.is_empty() {
+    return 0.0;
+  }
+  let sum_sq: f32 = samples.iter().map(|&s| s * s).sum();
+  (sum_sq / samples.len() as f32).sqrt()
+}
+
+/// Converts a normalized f32 sample (-1.0 to 1.0) to i16 for WAV encoding.
+/// This mirrors the conversion logic in audio.rs.
+pub fn sample_to_i16(sample: f32) -> i16 {
+  (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16
+}
+
+/// Simulates the resampling accumulator logic from audio.rs.
+/// Returns the number of output samples that would be produced.
+pub fn simulate_resampling(
+  num_input_frames: usize,
+  _channels: usize,
+  sample_drop_ratio: f64,
+  initial_accumulator: f64,
+) -> (usize, f64) {
+  let mut accumulator = initial_accumulator;
+  let mut output_count = 0;
+
+  for _ in 0..num_input_frames {
+    accumulator += 1.0;
+    while accumulator >= sample_drop_ratio {
+      accumulator -= sample_drop_ratio;
+      output_count += 1;
+    }
+  }
+
+  (output_count, accumulator)
+}
+
+/// Converts multi-channel samples to mono by averaging channels.
+pub fn to_mono(samples: &[f32], channels: usize) -> Vec<f32> {
+  if channels == 0 {
+    return vec![];
+  }
+
+  let num_frames = samples.len() / channels;
+  let mut mono = Vec::with_capacity(num_frames);
+
+  for frame_idx in 0..num_frames {
+    let mut sum: f32 = 0.0;
+    for ch in 0..channels {
+      sum += samples[frame_idx * channels + ch];
+    }
+    mono.push(sum / channels as f32);
+  }
+
+  mono
+}
+
+#[cfg(test)]
+mod rms_tests {
+  use super::*;
+
+  #[test]
+  fn test_rms_silence() {
+    let samples = [0.0f32; 100];
+    let rms = calculate_rms(&samples);
+    assert!((rms - 0.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn test_rms_constant_signal() {
+    // Constant signal of 0.5 should have RMS equal to 0.5
+    let samples = [0.5f32; 100];
+    let rms = calculate_rms(&samples);
+    assert!((rms - 0.5).abs() < 1e-6);
+  }
+
+  #[test]
+  fn test_rms_sine_wave() {
+    // For a pure sine wave, RMS = amplitude / sqrt(2)
+    let amplitude = 0.5f32;
+    let samples: Vec<f32> = (0..1000)
+      .map(|i| amplitude * (i as f32 * PI / 500.0).sin())
+      .collect();
+    let rms = calculate_rms(&samples);
+    let expected_rms = amplitude / std::f32::consts::SQRT_2;
+    assert!((rms - expected_rms).abs() < 0.01);
+  }
+
+  #[test]
+  fn test_rms_empty_slice() {
+    let samples: [f32; 0] = [];
+    let rms = calculate_rms(&samples);
+    assert!((rms - 0.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn test_rms_single_sample() {
+    let samples = [0.707f32]; // RMS should equal the sample value
+    let rms = calculate_rms(&samples);
+    assert!((rms - 0.707).abs() < 0.001);
+  }
+
+  #[test]
+  fn test_rms_bipolar_signal() {
+    let samples = [-1.0f32, 1.0f32, -1.0f32, 1.0f32];
+    let rms = calculate_rms(&samples);
+    // RMS of [−1, 1, −1, 1] = sqrt((1+1+1+1)/4) = sqrt(1) = 1
+    assert!((rms - 1.0).abs() < f32::EPSILON);
+  }
+}
+
+#[cfg(test)]
+mod sample_conversion_tests {
+  use super::*;
+
+  #[test]
+  fn test_sample_to_i16_positive_max() {
+    let sample = 1.0f32;
+    let converted = sample_to_i16(sample);
+    assert_eq!(converted, i16::MAX);
+  }
+
+  #[test]
+  fn test_sample_to_i16_negative_max() {
+    let sample = -1.0f32;
+    let converted = sample_to_i16(sample);
+    // Note: Clamping then casting gives -32767, not -32768
+    assert_eq!(converted, -32767);
+  }
+
+  #[test]
+  fn test_sample_to_i16_zero() {
+    let sample = 0.0f32;
+    let converted = sample_to_i16(sample);
+    assert_eq!(converted, 0);
+  }
+
+  #[test]
+  fn test_sample_to_i16_mid_value() {
+    let sample = 0.5f32;
+    let converted = sample_to_i16(sample);
+    // 0.5 * 32767 ≈ 16383
+    assert_eq!(converted, 16383);
+  }
+
+  #[test]
+  fn test_sample_to_i16_negative_mid() {
+    let sample = -0.5f32;
+    let converted = sample_to_i16(sample);
+    // -0.5 * 32767 = -16383.5 → -16383 (truncated toward zero)
+    assert_eq!(converted, -16383);
+  }
+
+  #[test]
+  fn test_sample_to_i16_clamping_positive() {
+    let sample = 2.0f32; // Above max, should clamp
+    let converted = sample_to_i16(sample);
+    assert_eq!(converted, i16::MAX);
+  }
+
+  #[test]
+  fn test_sample_to_i16_clamping_negative() {
+    let sample = -2.0f32; // Below min, should clamp to -1.0
+    let converted = sample_to_i16(sample);
+    // Clamped to -1.0, then -1.0 * 32767 = -32767
+    assert_eq!(converted, -32767);
+  }
+
+  #[test]
+  fn test_sample_to_i16_roundtrip_positive() {
+    let original = 0.75f32;
+    let converted = sample_to_i16(original);
+    let back_to_float = converted as f32 / i16::MAX as f32;
+    assert!((back_to_float - original).abs() < 0.001);
+  }
+}
+
+#[cfg(test)]
+mod resampling_tests {
+  use super::*;
+
+  #[test]
+  fn test_resampling_no_downsampling() {
+    // sample_drop_ratio = 1.0 means 1:1 ratio
+    let (output, final_acc) = simulate_resampling(100, 1, 1.0, 0.0);
+    assert_eq!(output, 100);
+    assert!((final_acc - 0.0).abs() < f64::EPSILON);
+  }
+
+  #[test]
+  fn test_resampling_2x_downsampling() {
+    // sample_drop_ratio = 2.0 means half the samples are kept
+    let (output, _final_acc) = simulate_resampling(100, 1, 2.0, 0.0);
+    assert_eq!(output, 50);
+  }
+
+  #[test]
+  fn test_resampling_4x_downsampling() {
+    // sample_drop_ratio = 4.0 means quarter of samples are kept
+    let (output, _) = simulate_resampling(100, 1, 4.0, 0.0);
+    assert_eq!(output, 25);
+  }
+
+  #[test]
+  fn test_resampling_realistic_ratio() {
+    // 44100 -> 16000 ratio
+    let source_rate = 44100.0;
+    let target_rate = 16000.0;
+    let ratio = source_rate / target_rate;
+    let (output, _) = simulate_resampling(44100, 1, ratio, 0.0);
+    // Should be approximately 16000 samples
+    assert!(output >= 15900 && output <= 16100);
+  }
+
+  #[test]
+  fn test_resampling_accumulator_propagation() {
+    // Test that accumulator state is properly maintained
+    let (output1, acc1) = simulate_resampling(50, 1, 2.5, 0.0);
+    let (output2, _acc2) = simulate_resampling(50, 1, 2.5, acc1);
+    let (output_combined, _) = simulate_resampling(100, 1, 2.5, 0.0);
+
+    // Combined should equal sum of individual outputs
+    assert_eq!(output1 + output2, output_combined);
+  }
+
+  #[test]
+  fn test_resampling_empty_input() {
+    let (output, final_acc) = simulate_resampling(0, 1, 2.0, 0.0);
+    assert_eq!(output, 0);
+    assert!((final_acc - 0.0).abs() < f64::EPSILON);
+  }
+
+  #[test]
+  fn test_resampling_48000_to_16000() {
+    // 48kHz to 16kHz = 3x downsampling
+    let ratio = 48000.0 / 16000.0;
+    let (output, _) = simulate_resampling(48000, 1, ratio, 0.0);
+    assert_eq!(output, 16000);
+  }
+}
+
+#[cfg(test)]
+mod mono_conversion_tests {
+  use super::*;
+
+  #[test]
+  fn test_to_mono_single_channel() {
+    let samples = vec![0.1f32, 0.2f32, 0.3f32];
+    let mono = to_mono(&samples, 1);
+    assert_eq!(mono, samples);
+  }
+
+  #[test]
+  fn test_to_mono_stereo() {
+    // Left = 0.0, Right = 1.0 -> mono should be 0.5
+    let samples = vec![0.0f32, 1.0f32, 0.0f32, 1.0f32];
+    let mono = to_mono(&samples, 2);
+    assert_eq!(mono.len(), 2);
+    assert!((mono[0] - 0.5).abs() < f32::EPSILON);
+    assert!((mono[1] - 0.5).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn test_to_mono_five_channel() {
+    // All channels same value
+    let samples = vec![0.5f32, 0.5f32, 0.5f32, 0.5f32, 0.5f32];
+    let mono = to_mono(&samples, 5);
+    assert_eq!(mono.len(), 1);
+    assert!((mono[0] - 0.5).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn test_to_mono_empty() {
+    let samples: Vec<f32> = vec![];
+    let mono = to_mono(&samples, 2);
+    assert!(mono.is_empty());
+  }
+
+  #[test]
+  fn test_to_mono_zero_channels() {
+    let samples = vec![0.1f32, 0.2f32];
+    let mono = to_mono(&samples, 0);
+    assert!(mono.is_empty());
+  }
+
+  #[test]
+  fn test_to_mono_partial_frames() {
+    // Should only process complete frames
+    let samples = vec![1.0f32, 2.0f32, 3.0f32]; // 3 samples, 2 channels = 1.5 frames
+    let mono = to_mono(&samples, 2);
+    assert_eq!(mono.len(), 1); // Only 1 complete frame
+    assert!((mono[0] - 1.5).abs() < f32::EPSILON);
+  }
+}
