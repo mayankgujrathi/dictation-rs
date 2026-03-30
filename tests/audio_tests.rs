@@ -2,11 +2,11 @@
 //!
 //! Tests for pure functions and logic in the audio processing pipeline.
 
+use dictation::audio::calculate_rms_volume;
 use std::f32::consts::PI;
 
-/// Calculates RMS (Root Mean Square) from a slice of samples.
-/// This mirrors the logic used in the audio callback.
-pub fn calculate_rms(samples: &[f32]) -> f32 {
+/// Calculate RMS without the volume scaling (returns raw f32)
+fn calculate_rms(samples: &[f32]) -> f32 {
   if samples.is_empty() {
     return 0.0;
   }
@@ -15,7 +15,6 @@ pub fn calculate_rms(samples: &[f32]) -> f32 {
 }
 
 /// Converts a normalized f32 sample (-1.0 to 1.0) to i16 for WAV encoding.
-/// This mirrors the conversion logic in audio.rs.
 pub fn sample_to_i16(sample: f32) -> i16 {
   (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16
 }
@@ -113,6 +112,15 @@ mod rms_tests {
     let rms = calculate_rms(&samples);
     // RMS of [−1, 1, −1, 1] = sqrt((1+1+1+1)/4) = sqrt(1) = 1
     assert!((rms - 1.0).abs() < f32::EPSILON);
+  }
+
+  #[test]
+  fn test_calculate_rms_volume_scaling() {
+    // Test that calculate_rms_volume properly scales by 1000
+    let samples = [0.5f32; 100];
+    let scaled = calculate_rms_volume(&samples);
+    let expected_scaled = (0.5 * 1000.0) as u32;
+    assert_eq!(scaled, expected_scaled);
   }
 }
 

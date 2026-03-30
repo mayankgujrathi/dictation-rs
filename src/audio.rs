@@ -7,6 +7,35 @@ use std::sync::{
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use hound::{WavSpec, WavWriter};
 
+/// Calculate RMS (Root Mean Square) from audio samples for volume monitoring
+pub fn calculate_rms_volume(samples: &[f32]) -> u32 {
+  let sum_sq: f32 = samples.iter().map(|&s| s * s).sum();
+  let rms = (sum_sq / samples.len() as f32).sqrt();
+  (rms * 1000.0) as u32
+}
+
+/// Mix multiple channels into a single mono sample by averaging
+fn mix_to_mono(samples: &[f32], channels: usize, frame_idx: usize) -> f32 {
+  let mut mono_sample: f32 = 0.0;
+  for ch in 0..channels {
+    mono_sample += samples[frame_idx * channels + ch];
+  }
+  mono_sample / channels as f32
+}
+
+/// Resample a mono sample using accumulator-based downsampling
+/// Returns the sample if it should be written (based on drop ratio)
+fn resample_sample(mono_sample: f32, accumulator: &mut f64, sample_drop_ratio: f64) -> Option<i16> {
+  *accumulator += 1.0;
+
+  if *accumulator >= sample_drop_ratio {
+    *accumulator -= sample_drop_ratio;
+    Some((mono_sample * i16::MAX as f32) as i16)
+  } else {
+    None
+  }
+}
+
 pub fn run_volume_monitor(volume_level: Arc<AtomicU32>, running: Arc<AtomicBool>) {
   let host = cpal::default_host();
   let device = host.default_input_device().expect("No mic found");
@@ -43,27 +72,18 @@ pub fn run_volume_monitor(volume_level: Arc<AtomicU32>, running: Arc<AtomicBool>
       &stream_config,
       move |data: &[f32], _| {
         // Update volume monitor
-        let sum_sq: f32 = data.iter().map(|&s| s * s).sum();
-        let rms = (sum_sq / data.len() as f32).sqrt();
-        volume_level.store((rms * 1000.0) as u32, Ordering::Relaxed);
+        volume_level.store(calculate_rms_volume(data), Ordering::Relaxed);
 
         // Write to WAV with resampling
         if let Ok(mut writer) = writer_cb.lock() {
           let num_frames = data.len() / channels;
 
           for frame_idx in 0..num_frames {
-            let mut mono_sample: f32 = 0.0;
-            for ch in 0..channels {
-              mono_sample += data[frame_idx * channels + ch];
-            }
-            mono_sample /= channels as f32;
+            let mono_sample = mix_to_mono(data, channels, frame_idx);
 
-            accumulator += 1.0;
-
-            while accumulator >= sample_drop_ratio {
-              accumulator -= sample_drop_ratio;
-              let s = (mono_sample * i16::MAX as f32) as i16;
-              let _ = writer.write_sample(s);
+            if let Some(sample) = resample_sample(mono_sample, &mut accumulator, sample_drop_ratio)
+            {
+              let _ = writer.write_sample(sample);
             }
           }
         }
