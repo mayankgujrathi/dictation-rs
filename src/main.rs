@@ -9,12 +9,22 @@ use std::sync::{
 use eframe::egui;
 
 fn main() -> eframe::Result<()> {
+  let runtime = tokio::runtime::Builder::new_multi_thread()
+    .enable_all()
+    .thread_name("dictation-worker")
+    .worker_threads(4)
+    .max_blocking_threads(4)
+    .build()
+    .expect("Failed to build Tokio runtime");
+
+  let _guard = runtime.enter();
+
   let volume_level = Arc::new(AtomicU32::new(0));
   let running = Arc::new(AtomicBool::new(true));
 
-  // Set up global keyboard listener for ESC key
+  // Set up global keyboard listener for ESC key using tokio spawn_blocking
   let running_clone = running.clone();
-  std::thread::spawn(move || {
+  let _keyboard_handle = runtime.spawn_blocking(move || {
     if let Err(e) = rdev::listen(move |event| {
       if event.event_type == rdev::EventType::KeyPress(rdev::Key::Escape) {
         running_clone.store(false, std::sync::atomic::Ordering::SeqCst);
@@ -24,13 +34,7 @@ fn main() -> eframe::Result<()> {
     }
   });
 
-  let runtime = tokio::runtime::Builder::new_multi_thread()
-    .enable_all()
-    .build()
-    .expect("Failed to build Tokio runtime");
-
-  let _enter_guard = runtime.enter();
-
+  // Spawn audio volume monitor using tokio spawn_blocking
   let _audio_handle = runtime.spawn_blocking({
     let volume_level = volume_level.clone();
     let running = running.clone();
@@ -56,8 +60,8 @@ fn main() -> eframe::Result<()> {
     Box::new(move |_cc| Box::new(app::VoiceApp::new(volume_level, running))),
   );
 
-  drop(_enter_guard);
-  drop(runtime);
+  // Shutdown runtime with a timeout to ensure clean exit
+  runtime.shutdown_timeout(std::time::Duration::from_millis(500));
 
   result
 }
