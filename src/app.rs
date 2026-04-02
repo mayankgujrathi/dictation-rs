@@ -14,7 +14,6 @@ pub struct VoiceApp {
   running: Arc<AtomicBool>,
   history: VecDeque<f32>,
   positioned: bool,
-  escape_pressed: bool,
 }
 
 impl VoiceApp {
@@ -24,7 +23,6 @@ impl VoiceApp {
       running,
       history: VecDeque::from(vec![0.0; HISTORY_LEN]),
       positioned: false,
-      escape_pressed: false,
     }
   }
 }
@@ -35,6 +33,12 @@ impl eframe::App for VoiceApp {
   }
 
   fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    // Check if ESC was pressed globally and close window
+    if !self.running.load(Ordering::SeqCst) {
+      ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+      return;
+    }
+
     if !self.positioned {
       if let Some(monitor_res) = ctx.input(|i| i.viewport().monitor_size) {
         let window_size = egui::vec2(WINDOW_INNER_SIZE[0], WINDOW_INNER_SIZE[1]);
@@ -43,19 +47,6 @@ impl eframe::App for VoiceApp {
         ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(x, y)));
         self.positioned = true;
       }
-    }
-
-    // Handle Escape key to stop recording and exit
-    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) && !self.escape_pressed {
-      self.escape_pressed = true;
-      self.running.store(false, Ordering::SeqCst);
-
-      // Give audio thread time to finalize
-      tokio::runtime::Handle::current().block_on(tokio::time::sleep(
-        std::time::Duration::from_millis(500),
-      ));
-
-      ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }
 
     let current_vol = self.volume_atomic.load(Ordering::Relaxed) as f32 / 1000.0;
