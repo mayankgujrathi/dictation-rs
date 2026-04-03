@@ -1,7 +1,6 @@
-use std::fs::File;
 use std::sync::{
   Arc,
-  atomic::{AtomicBool, AtomicU32, Ordering},
+  atomic::{AtomicBool, AtomicU32},
 };
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -36,84 +35,201 @@ fn resample_sample(mono_sample: f32, accumulator: &mut f64, sample_drop_ratio: f
   }
 }
 
-pub fn run_volume_monitor(volume_level: Arc<AtomicU32>, running: Arc<AtomicBool>) {
-  let host = cpal::default_host();
-  let device = host.default_input_device().expect("No mic found");
-  let config = device.default_input_config().unwrap();
-  let source_sample_rate = config.sample_rate().0 as f64;
-  let channels = config.channels() as usize;
+/// Shared state for recording that can be accessed from multiple threads
+#[derive(Clone)]
+pub struct RecordingState {
+  /// Current volume level for visualization
+  pub volume_level: Arc<AtomicU32>,
+  /// Flag to signal recording is active
+  pub is_recording: Arc<AtomicBool>,
+}
 
-  // Target: 16kHz, Mono, 16-bit PCM for Whisper compatibility
-  let target_sample_rate = 16000u32;
-  let spec = WavSpec {
-    channels: 1,
-    sample_rate: target_sample_rate,
-    bits_per_sample: 16,
-    sample_format: hound::SampleFormat::Int,
-  };
+impl RecordingState {
+  pub fn new() -> Self {
+    Self {
+      volume_level: Arc::new(AtomicU32::new(0)),
+      is_recording: Arc::new(AtomicBool::new(false)),
+    }
+  }
 
-  // Create temp file path
-  let temp_path = std::env::temp_dir().join("dictation_temp.wav");
+  pub fn set_recording(&self, recording: bool) {
+    self
+      .is_recording
+      .store(recording, std::sync::atomic::Ordering::SeqCst);
+  }
 
-  let file = File::create(&temp_path).expect("Failed to create temp file");
-  let writer = WavWriter::new(file, spec).expect("Failed to create WavWriter");
+  #[allow(dead_code)]
+  pub fn is_recording(&self) -> bool {
+    self.is_recording.load(std::sync::atomic::Ordering::SeqCst)
+  }
 
-  let stream_config: cpal::StreamConfig = config.into();
+  /// Start a new recording session
+  pub fn record(&self) {
+    // Set the flag to true
+    self
+      .is_recording
+      .store(true, std::sync::atomic::Ordering::SeqCst);
 
-  let writer_arc = Arc::new(std::sync::Mutex::new(writer));
-  let writer_cb = writer_arc.clone();
+    let state = self.clone();
 
-  // Resampling state
-  let sample_drop_ratio = source_sample_rate / target_sample_rate as f64;
-  let mut accumulator: f64 = 0.0;
+    // Run recording in background thread
+    std::thread::spawn(move || {
+      let host = cpal::default_host();
+      let device = match host.default_input_device() {
+        Some(d) => d,
+        None => {
+          eprintln!("No default input device found");
+          state
+            .is_recording
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+          return;
+        }
+      };
 
-  let stream = device
-    .build_input_stream(
-      &stream_config,
-      move |data: &[f32], _| {
-        // Update volume monitor
-        volume_level.store(calculate_rms_volume(data), Ordering::Relaxed);
+      let config = match device.default_input_config() {
+        Ok(c) => c,
+        Err(e) => {
+          eprintln!("Failed to get input config: {}", e);
+          state
+            .is_recording
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+          return;
+        }
+      };
 
-        // Write to WAV with resampling
-        if let Ok(mut writer) = writer_cb.lock() {
-          let num_frames = data.len() / channels;
+      let source_sample_rate = config.sample_rate().0 as f64;
+      let channels = config.channels() as usize;
 
-          for frame_idx in 0..num_frames {
-            let mono_sample = mix_to_mono(data, channels, frame_idx);
+      // Target: 16kHz, Mono, 16-bit PCM for Whisper compatibility
+      let target_sample_rate = 16000u32;
+      let spec = WavSpec {
+        channels: 1,
+        sample_rate: target_sample_rate,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+      };
 
-            if let Some(sample) = resample_sample(mono_sample, &mut accumulator, sample_drop_ratio)
-            {
-              let _ = writer.write_sample(sample);
+      // Create temp file path
+      let temp_path = std::env::temp_dir().join("dictation_temp.wav");
+
+      let writer = match WavWriter::create(&temp_path, spec) {
+        Ok(w) => w,
+        Err(e) => {
+          eprintln!("Failed to create WavWriter: {}", e);
+          state
+            .is_recording
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+          return;
+        }
+      };
+
+      let stream_config: cpal::StreamConfig = config.into();
+
+      // Shared state between closure and main thread
+      let writer_arc = Arc::new(std::sync::Mutex::new(Some(writer)));
+      let is_active = Arc::new(std::sync::Mutex::new(true));
+
+      // Resampling state
+      let sample_drop_ratio = source_sample_rate / target_sample_rate as f64;
+      let accumulator_arc = Arc::new(std::sync::Mutex::new(0.0_f64));
+
+      let is_recording_callback = state.is_recording.clone();
+      let volume_level = state.volume_level.clone();
+      let writer_cb = writer_arc.clone();
+      let _is_active = is_active.clone();
+      let acc_cb = accumulator_arc.clone();
+
+      let stream = match device.build_input_stream(
+        &stream_config,
+        move |data: &[f32], _| {
+          // Update volume monitor
+          volume_level.store(
+            calculate_rms_volume(data),
+            std::sync::atomic::Ordering::Relaxed,
+          );
+
+          // Only write to WAV if still recording
+          if let Ok(mut writer_opt) = writer_cb.lock() {
+            if let Some(writer) = writer_opt.as_mut() {
+              if let Ok(mut acc) = acc_cb.lock() {
+                let num_frames = data.len() / channels;
+
+                for frame_idx in 0..num_frames {
+                  let mono_sample = mix_to_mono(data, channels, frame_idx);
+
+                  if let Some(sample) = resample_sample(mono_sample, &mut acc, sample_drop_ratio) {
+                    let _ = writer.write_sample(sample);
+                  }
+                }
+              }
             }
           }
+        },
+        |err| {
+          eprintln!("Stream error: {}", err);
+        },
+        None,
+      ) {
+        Ok(s) => s,
+        Err(e) => {
+          eprintln!("Failed to build input stream: {}", e);
+          state
+            .is_recording
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+          return;
         }
-      },
-      |_| {},
-      None,
-    )
-    .unwrap();
+      };
 
-  stream.play().unwrap();
+      if let Err(e) = stream.play() {
+        eprintln!("Failed to play stream: {}", e);
+        state
+          .is_recording
+          .store(false, std::sync::atomic::Ordering::SeqCst);
+        return;
+      }
 
-  // Wait for running to be set to false
-  while running.load(Ordering::SeqCst) {
-    std::thread::sleep(std::time::Duration::from_millis(100));
+      // Wait for recording to be stopped
+      while is_recording_callback.load(std::sync::atomic::Ordering::SeqCst) {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+      }
+
+      // Signal callback to stop
+      if let Ok(mut active) = is_active.lock() {
+        *active = false;
+      }
+
+      // Stop the stream
+      drop(stream);
+
+      // Finalize the writer
+      if let Ok(writer_opt) = Arc::try_unwrap(writer_arc) {
+        if let Some(writer) = writer_opt.into_inner().ok().flatten() {
+          let _ = writer.finalize();
+        }
+      }
+
+      // Copy the temp file to the final location
+      if std::path::Path::new(&temp_path).exists() {
+        let final_path = std::env::current_dir()
+          .unwrap_or_else(|_| std::env::temp_dir())
+          .join("recording.wav");
+        let _ = std::fs::copy(&temp_path, &final_path);
+        // Clean up temp file
+        let _ = std::fs::remove_file(&temp_path);
+      }
+    });
   }
+}
 
-  // Drop the stream to release the closure and writer_cb
-  drop(stream);
-
-  // Finalize the writer
-  if let Ok(writer_mutex) = Arc::try_unwrap(writer_arc) {
-    let writer = writer_mutex.into_inner().unwrap();
-    writer.finalize().expect("Failed to finalize WAV");
-  }
-
-  // Copy the temp file to the final location
-  if std::path::Path::new(&temp_path).exists() {
-    let final_path = std::env::current_dir().unwrap().join("recording.wav");
-    let _ = std::fs::copy(&temp_path, &final_path);
-    // Clean up temp file
-    let _ = std::fs::remove_file(&temp_path);
+/// Legacy function for backward compatibility - runs volume monitor only
+#[allow(dead_code)]
+pub fn run_volume_monitor(
+  _volume_level: Arc<AtomicU32>,
+  _running: Arc<std::sync::atomic::AtomicBool>,
+) {
+  // This is now a no-op since recording is controlled via RecordingState
+  // Keep for API compatibility
+  loop {
+    std::thread::sleep(std::time::Duration::from_secs(1));
   }
 }

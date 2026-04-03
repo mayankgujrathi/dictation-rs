@@ -11,16 +11,22 @@ pub const HISTORY_LEN: usize = 8;
 
 pub struct VoiceApp {
   volume_atomic: Arc<AtomicU32>,
-  running: Arc<AtomicBool>,
+  is_recording: Arc<AtomicBool>,
+  should_exit: Arc<AtomicBool>,
   history: VecDeque<f32>,
   positioned: bool,
 }
 
 impl VoiceApp {
-  pub fn new(volume_atomic: Arc<AtomicU32>, running: Arc<AtomicBool>) -> Self {
+  pub fn new(
+    volume_atomic: Arc<AtomicU32>,
+    is_recording: Arc<AtomicBool>,
+    should_exit: Arc<AtomicBool>,
+  ) -> Self {
     Self {
       volume_atomic,
-      running,
+      is_recording,
+      should_exit,
       history: VecDeque::from(vec![0.0; HISTORY_LEN]),
       positioned: false,
     }
@@ -33,9 +39,18 @@ impl eframe::App for VoiceApp {
   }
 
   fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-    // Check if ESC was pressed globally and close window
-    if !self.running.load(Ordering::SeqCst) {
+    // Check if exit was requested from tray
+    if self.should_exit.load(Ordering::SeqCst) {
       ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+      return;
+    }
+
+    // Check if recording is active
+    let is_recording = self.is_recording.load(Ordering::SeqCst);
+
+    // If not recording, don't render but keep checking state
+    if !is_recording {
+      ctx.request_repaint_after(std::time::Duration::from_millis(100));
       return;
     }
 
