@@ -9,7 +9,7 @@ use tray_icon::{
 };
 
 /// Create a simple colored microphone icon for the tray (32x32)
-fn create_tray_icon() -> Icon {
+pub fn create_tray_icon() -> Icon {
   let size = 32;
   let mut buffer = vec![0u8; (size * size * 4) as usize];
 
