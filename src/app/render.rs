@@ -3,9 +3,26 @@ use std::time::{Duration, Instant};
 
 use eframe::egui;
 
-use super::{HISTORY_LEN, UIState, VoiceApp};
+use super::{HISTORY_LEN, UIState, VoiceApp, WINDOW_INNER_SIZE};
 
 impl VoiceApp {
+  fn enter_idle_mode(&mut self, ctx: &egui::Context) {
+    // Keep viewport/event loop alive (for hotkey + tray exit responsiveness),
+    // but make UI effectively non-intrusive and low-cost.
+    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(1.0, 1.0)));
+    ctx.request_repaint_after(Duration::from_millis(150));
+  }
+
+  fn reset_transcription_cycle(&mut self) {
+    self.transcription_spawned = false;
+    self.transcription_rendered_at = None;
+    self.saw_recording_active = false;
+    if let Ok(mut slot) = self.transcription_status.lock() {
+      *slot = None;
+    }
+  }
+
   fn update_model_downloading(&mut self, ctx: &egui::Context, my_frame: egui::Frame) {
     ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
     self.spawn_model_download_worker_if_needed();
@@ -44,14 +61,21 @@ impl VoiceApp {
 
     if is_recording {
       ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+      ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
+        WINDOW_INNER_SIZE[0],
+        WINDOW_INNER_SIZE[1],
+      )));
+      ctx.request_repaint();
       self.saw_recording_active = true;
     }
 
     if !is_recording {
       if self.saw_recording_active {
         self.ui_state = UIState::Transcribing;
+        ctx.request_repaint();
       } else {
-        ctx.request_repaint_after(Duration::from_millis(100));
+        // Idle state: keep loop responsive while minimizing resource usage.
+        self.enter_idle_mode(ctx);
       }
       return;
     }
@@ -66,12 +90,16 @@ impl VoiceApp {
       .frame(my_frame)
       .show(ctx, |ui| {
         let (rect, _) = ui.allocate_exact_size(ui.available_size(), egui::Sense::hover());
+        if rect.height() <= 0.0 || rect.width() <= 0.0 {
+          return;
+        }
         let painter = ui.painter();
         let spacing = rect.width() / self.history.len() as f32;
 
         for (i, &amp) in self.history.iter().enumerate() {
           let x = rect.left() + (i as f32 * spacing) + (spacing / 2.0);
-          let h = (amp * rect.height() * 4.0).clamp(2.0, rect.height() * 0.9);
+          let max_h = (rect.height() * 0.9).max(2.0);
+          let h = (amp * rect.height() * 4.0).clamp(2.0, max_h);
 
           painter.line_segment(
             [
@@ -118,7 +146,9 @@ impl VoiceApp {
 
     match status_opt {
       Some(false) => {
-        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        self.reset_transcription_cycle();
+        self.ui_state = UIState::VisualizerRecording;
+        self.enter_idle_mode(ctx);
         return;
       }
       Some(true) => {
@@ -129,7 +159,9 @@ impl VoiceApp {
           .map(|t| t.elapsed() >= Duration::from_secs(1))
           .unwrap_or(false)
         {
-          ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+          self.reset_transcription_cycle();
+          self.ui_state = UIState::VisualizerRecording;
+          self.enter_idle_mode(ctx);
           return;
         }
       }
