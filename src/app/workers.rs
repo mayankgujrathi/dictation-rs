@@ -60,3 +60,88 @@ impl VoiceApp {
     std::thread::spawn(move || run_transcription(status_slot));
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::app::TEST_CWD_LOCK;
+  use tempfile::tempdir;
+
+  fn model_flag_path() -> std::path::PathBuf {
+    std::env::current_dir()
+      .unwrap_or_else(|_| std::env::temp_dir())
+      .join("hf_model_downloaded.flag")
+  }
+
+  #[test]
+  fn test_model_downloaded_placeholder_false_when_absent() {
+    let _guard = match TEST_CWD_LOCK.lock() {
+      Ok(g) => g,
+      Err(e) => e.into_inner(),
+    };
+    let old_cwd = std::env::current_dir().expect("current dir should be available");
+    let temp = tempdir().expect("temp dir should be created");
+    std::env::set_current_dir(temp.path()).expect("should switch current dir");
+
+    let flag = model_flag_path();
+    let _ = std::fs::remove_file(&flag);
+
+    assert!(!is_model_downloaded_placeholder());
+
+    std::env::set_current_dir(old_cwd).expect("should restore current dir");
+  }
+
+  #[test]
+  fn test_model_downloaded_placeholder_true_when_present() {
+    let _guard = match TEST_CWD_LOCK.lock() {
+      Ok(g) => g,
+      Err(e) => e.into_inner(),
+    };
+    let old_cwd = std::env::current_dir().expect("current dir should be available");
+    let temp = tempdir().expect("temp dir should be created");
+    std::env::set_current_dir(temp.path()).expect("should switch current dir");
+
+    let flag = model_flag_path();
+    let _ = std::fs::remove_file(&flag);
+    std::fs::write(&flag, b"downloaded").expect("should create model flag");
+
+    assert!(is_model_downloaded_placeholder());
+
+    let _ = std::fs::remove_file(&flag);
+    std::env::set_current_dir(old_cwd).expect("should restore current dir");
+  }
+
+  #[test]
+  fn test_run_model_download_reaches_100_and_creates_flag() {
+    let _guard = match TEST_CWD_LOCK.lock() {
+      Ok(g) => g,
+      Err(e) => e.into_inner(),
+    };
+    let old_cwd = std::env::current_dir().expect("current dir should be available");
+    let temp = tempdir().expect("temp dir should be created");
+    std::env::set_current_dir(temp.path()).expect("should switch current dir");
+
+    let flag = model_flag_path();
+    let _ = std::fs::remove_file(&flag);
+
+    let progress = Arc::new(AtomicU32::new(0));
+    run_model_download(progress.clone());
+
+    assert_eq!(progress.load(Ordering::Relaxed), 100);
+    assert!(flag.exists());
+
+    let _ = std::fs::remove_file(&flag);
+    std::env::set_current_dir(old_cwd).expect("should restore current dir");
+  }
+
+  #[test]
+  fn test_run_transcription_sets_error_status() {
+    let status_slot = Arc::new(Mutex::new(None));
+    run_transcription(status_slot.clone());
+
+    assert_eq!(
+      *status_slot.lock().expect("status lock poisoned"),
+      Some(true)
+    );
+  }
+}

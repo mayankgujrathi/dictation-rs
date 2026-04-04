@@ -122,6 +122,33 @@ mod rms_tests {
     let expected_scaled = (0.5 * 1000.0) as u32;
     assert_eq!(scaled, expected_scaled);
   }
+
+  #[test]
+  fn test_calculate_rms_volume_quarter_signal() {
+    let samples = [0.25f32; 16];
+    assert_eq!(calculate_rms_volume(&samples), 250);
+  }
+
+  #[test]
+  fn test_calculate_rms_volume_bipolar_signal() {
+    let samples = [-1.0f32, 1.0f32, -1.0f32, 1.0f32];
+    // RMS is 1.0, then scaled to 1000.
+    assert_eq!(calculate_rms_volume(&samples), 1000);
+  }
+
+  #[test]
+  fn test_calculate_rms_volume_truncation_behavior() {
+    let samples = [0.0015f32; 64];
+    // 0.0015 * 1000 = 1.5, cast to u32 truncates toward zero.
+    assert_eq!(calculate_rms_volume(&samples), 1);
+  }
+
+  #[test]
+  fn test_calculate_rms_volume_empty_returns_zero_current_behavior() {
+    let samples: [f32; 0] = [];
+    // Current implementation evaluates to NaN internally and final cast yields 0.
+    assert_eq!(calculate_rms_volume(&samples), 0);
+  }
 }
 
 #[cfg(test)]
