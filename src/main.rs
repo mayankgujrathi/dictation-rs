@@ -34,12 +34,24 @@ fn main() -> eframe::Result<()> {
   let volume_level = recording_state.volume_level.clone();
   let is_recording = recording_state.is_recording.clone();
 
-  // Set up global keyboard listener for Right Alt (AltGr) toggle
+  // Set up global keyboard listener for modifier-key toggle
+  // Windows/Linux: Ctrl
+  // macOS: Command (Meta)
   let recording_state_clone = recording_state.clone();
   let should_exit_clone = should_exit.clone();
 
   let _keyboard_handle = runtime.spawn_blocking(move || {
-    let mut altgr_was_pressed = false;
+    let mut hotkey_was_pressed = false;
+
+    #[cfg(target_os = "macos")]
+    fn is_toggle_key(key: rdev::Key) -> bool {
+      matches!(key, rdev::Key::MetaLeft | rdev::Key::MetaRight)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn is_toggle_key(key: rdev::Key) -> bool {
+      matches!(key, rdev::Key::ControlLeft | rdev::Key::ControlRight)
+    }
 
     if let Err(e) = rdev::listen(move |event| {
       // Check for tray exit
@@ -47,10 +59,10 @@ fn main() -> eframe::Result<()> {
         return;
       }
 
-      // Check for Right Alt (AltGr) key
-      if event.event_type == rdev::EventType::KeyPress(rdev::Key::AltGr) {
-        if !altgr_was_pressed {
-          altgr_was_pressed = true;
+      // Check for configured hotkey key press/release.
+      if let rdev::EventType::KeyPress(key) = event.event_type {
+        if is_toggle_key(key) && !hotkey_was_pressed {
+          hotkey_was_pressed = true;
 
           // Toggle recording
           if recording_state_clone.is_recording() {
@@ -61,8 +73,10 @@ fn main() -> eframe::Result<()> {
             recording_state_clone.record();
           }
         }
-      } else if event.event_type == rdev::EventType::KeyRelease(rdev::Key::AltGr) {
-        altgr_was_pressed = false;
+      } else if let rdev::EventType::KeyRelease(key) = event.event_type {
+        if is_toggle_key(key) {
+          hotkey_was_pressed = false;
+        }
       }
     }) {
       eprintln!("Failed to start global keyboard listener: {:?}", e);
