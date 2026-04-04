@@ -15,3 +15,5 @@ dictation_temp.wav
 .idea/
 *.swp
 *.swo
+
+hf_model_downloaded.flag
