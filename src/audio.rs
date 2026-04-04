@@ -42,6 +42,8 @@ pub struct RecordingState {
   pub volume_level: Arc<AtomicU32>,
   /// Flag to signal recording is active
   pub is_recording: Arc<AtomicBool>,
+  /// Flag to indicate microphone stream is successfully initialized and running
+  pub mic_ready: Arc<AtomicBool>,
 }
 
 impl RecordingState {
@@ -49,6 +51,7 @@ impl RecordingState {
     Self {
       volume_level: Arc::new(AtomicU32::new(0)),
       is_recording: Arc::new(AtomicBool::new(false)),
+      mic_ready: Arc::new(AtomicBool::new(false)),
     }
   }
 
@@ -65,10 +68,14 @@ impl RecordingState {
 
   /// Start a new recording session
   pub fn record(&self) {
-    // Set the flag to true
+    // User intent: recording requested
     self
       .is_recording
       .store(true, std::sync::atomic::Ordering::SeqCst);
+    // Runtime readiness: mic stream not ready until initialization succeeds
+    self
+      .mic_ready
+      .store(false, std::sync::atomic::Ordering::SeqCst);
 
     let state = self.clone();
 
@@ -82,6 +89,9 @@ impl RecordingState {
           state
             .is_recording
             .store(false, std::sync::atomic::Ordering::SeqCst);
+          state
+            .mic_ready
+            .store(false, std::sync::atomic::Ordering::SeqCst);
           return;
         }
       };
@@ -92,6 +102,9 @@ impl RecordingState {
           eprintln!("Failed to get input config: {}", e);
           state
             .is_recording
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+          state
+            .mic_ready
             .store(false, std::sync::atomic::Ordering::SeqCst);
           return;
         }
@@ -176,6 +189,9 @@ impl RecordingState {
           state
             .is_recording
             .store(false, std::sync::atomic::Ordering::SeqCst);
+          state
+            .mic_ready
+            .store(false, std::sync::atomic::Ordering::SeqCst);
           return;
         }
       };
@@ -185,8 +201,15 @@ impl RecordingState {
         state
           .is_recording
           .store(false, std::sync::atomic::Ordering::SeqCst);
+        state
+          .mic_ready
+          .store(false, std::sync::atomic::Ordering::SeqCst);
         return;
       }
+
+      state
+        .mic_ready
+        .store(true, std::sync::atomic::Ordering::SeqCst);
 
       // Wait for recording to be stopped
       while is_recording_callback.load(std::sync::atomic::Ordering::SeqCst) {
@@ -200,6 +223,9 @@ impl RecordingState {
 
       // Stop the stream
       drop(stream);
+      state
+        .mic_ready
+        .store(false, std::sync::atomic::Ordering::SeqCst);
 
       // Finalize the writer
       if let Ok(writer_opt) = Arc::try_unwrap(writer_arc) {

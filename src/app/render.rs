@@ -58,8 +58,10 @@ impl VoiceApp {
 
   fn update_visualizer_recording(&mut self, ctx: &egui::Context, my_frame: egui::Frame) {
     let is_recording = self.is_recording.load(Ordering::SeqCst);
+    let mic_ready = self.mic_ready.load(Ordering::SeqCst);
+    let actively_recording = is_recording && mic_ready;
 
-    if is_recording {
+    if actively_recording {
       ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
       ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
         WINDOW_INNER_SIZE[0],
@@ -69,7 +71,7 @@ impl VoiceApp {
       self.saw_recording_active = true;
     }
 
-    if !is_recording {
+    if !actively_recording {
       if self.saw_recording_active {
         self.ui_state = UIState::Transcribing;
         ctx.request_repaint();

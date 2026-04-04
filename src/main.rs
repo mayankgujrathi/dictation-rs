@@ -33,6 +33,7 @@ fn main() -> eframe::Result<()> {
   let recording_state = audio::RecordingState::new();
   let volume_level = recording_state.volume_level.clone();
   let is_recording = recording_state.is_recording.clone();
+  let mic_ready = recording_state.mic_ready.clone();
 
   // Set up global keyboard listener for modifier-key toggle
   // Windows/Linux: Ctrl
@@ -103,7 +104,14 @@ fn main() -> eframe::Result<()> {
   let result = eframe::run_native(
     "Voice Widget",
     options,
-    Box::new(move |_cc| Box::new(app::VoiceApp::new(volume_level, is_recording, should_exit))),
+    Box::new(move |_cc| {
+      Box::new(app::VoiceApp::new(
+        volume_level,
+        is_recording,
+        mic_ready,
+        should_exit,
+      ))
+    }),
   );
 
   // Shutdown runtime with a timeout to ensure clean exit

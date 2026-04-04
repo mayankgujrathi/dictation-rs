@@ -20,6 +20,7 @@ pub(crate) static TEST_CWD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(()
 pub struct VoiceApp {
   pub(crate) volume_atomic: Arc<AtomicU32>,
   pub(crate) is_recording: Arc<AtomicBool>,
+  pub(crate) mic_ready: Arc<AtomicBool>,
   pub(crate) should_exit: Arc<AtomicBool>,
   pub(crate) ui_state: UIState,
   pub(crate) history: VecDeque<f32>,
@@ -36,6 +37,7 @@ impl VoiceApp {
   pub fn new(
     volume_atomic: Arc<AtomicU32>,
     is_recording: Arc<AtomicBool>,
+    mic_ready: Arc<AtomicBool>,
     should_exit: Arc<AtomicBool>,
   ) -> Self {
     let initial_state = if workers::is_model_downloaded_placeholder() {
@@ -47,6 +49,7 @@ impl VoiceApp {
     Self {
       volume_atomic,
       is_recording,
+      mic_ready,
       should_exit,
       ui_state: initial_state,
       history: VecDeque::from(vec![0.0; HISTORY_LEN]),
@@ -92,6 +95,7 @@ mod tests {
       Arc::new(AtomicU32::new(0)),
       Arc::new(AtomicBool::new(false)),
       Arc::new(AtomicBool::new(false)),
+      Arc::new(AtomicBool::new(false)),
     );
 
     assert_eq!(app.history.len(), HISTORY_LEN);
@@ -133,6 +137,7 @@ mod tests {
 
     let app = VoiceApp::new(
       Arc::new(AtomicU32::new(0)),
+      Arc::new(AtomicBool::new(false)),
       Arc::new(AtomicBool::new(false)),
       Arc::new(AtomicBool::new(false)),
     );
