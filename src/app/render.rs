@@ -25,28 +25,40 @@ impl VoiceApp {
 
   fn update_model_downloading(&mut self, ctx: &egui::Context, my_frame: egui::Frame) {
     ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
+      WINDOW_INNER_SIZE[0],
+      WINDOW_INNER_SIZE[1],
+    )));
     self.spawn_model_download_worker_if_needed();
 
     let progress_raw = self.download_progress_atomic.load(Ordering::Relaxed);
     let progress = (progress_raw as f32 / 100.0).clamp(0.0, 1.0);
-
     egui::CentralPanel::default()
       .frame(my_frame)
       .show(ctx, |ui| {
-        ui.vertical_centered(|ui| {
-          let response = ui.add_sized(
-            [ui.available_width(), ui.available_height().max(16.0)],
-            egui::ProgressBar::new(progress).fill(egui::Color32::from_rgb(40, 120, 255)),
-          );
+        let rect = ui.max_rect();
+        let radius = (rect.height() * 0.5).max(1.0);
 
-          ui.painter().text(
-            response.rect.center(),
-            egui::Align2::CENTER_CENTER,
-            format!("{}%", (progress * 100.0).round() as u32),
-            egui::FontId::proportional(12.0),
-            egui::Color32::WHITE,
+        ui.painter()
+          .rect_filled(rect, radius, egui::Color32::from_rgb(24, 24, 24));
+
+        let filled_width = (rect.width() * progress).clamp(0.0, rect.width());
+        if filled_width > 0.0 {
+          let filled_rect = egui::Rect::from_min_max(
+            rect.left_top(),
+            egui::pos2(rect.left() + filled_width, rect.bottom()),
           );
-        });
+          ui.painter()
+            .rect_filled(filled_rect, radius, egui::Color32::from_rgb(40, 120, 255));
+        }
+
+        ui.painter().text(
+          rect.center(),
+          egui::Align2::CENTER_CENTER,
+          format!("{}%", (progress * 100.0).round() as u32),
+          egui::FontId::proportional(12.0),
+          egui::Color32::WHITE,
+        );
       });
 
     if progress >= 1.0 {
@@ -189,7 +201,7 @@ impl eframe::App for VoiceApp {
 
     let my_frame = egui::Frame::none()
       .fill(egui::Color32::BLACK)
-      .rounding(50.0)
+      .rounding((WINDOW_INNER_SIZE[1] * 0.5).max(1.0))
       .inner_margin(8.0);
 
     match self.ui_state {

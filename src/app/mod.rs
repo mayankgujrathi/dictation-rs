@@ -40,7 +40,7 @@ impl VoiceApp {
     mic_ready: Arc<AtomicBool>,
     should_exit: Arc<AtomicBool>,
   ) -> Self {
-    let initial_state = if workers::is_model_downloaded_placeholder() {
+    let initial_state = if workers::is_model_downloaded() {
       UIState::VisualizerRecording
     } else {
       UIState::ModelDownloading
@@ -64,19 +64,34 @@ impl VoiceApp {
   }
 }
 
+pub(crate) fn is_model_ready() -> bool {
+  workers::is_model_downloaded()
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
+  use directories::ProjectDirs;
   use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicU32},
   };
   use tempfile::tempdir;
 
-  fn model_flag_path() -> std::path::PathBuf {
-    std::env::current_dir()
-      .unwrap_or_else(|_| std::env::temp_dir())
-      .join("hf_model_downloaded.flag")
+  fn model_dir_path() -> std::path::PathBuf {
+    ProjectDirs::from("com", "dictation", "dictation")
+      .map(|dirs| {
+        dirs
+          .data_dir()
+          .join("models")
+          .join("parakeet-tdt-0.6b-v3-int8")
+      })
+      .unwrap_or_else(|| {
+        std::env::current_dir()
+          .unwrap_or_else(|_| std::env::temp_dir())
+          .join("models")
+          .join("parakeet-tdt-0.6b-v3-int8")
+      })
   }
 
   #[test]
@@ -84,12 +99,8 @@ mod tests {
     let _guard = TEST_CWD_LOCK
       .lock()
       .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let old_cwd = std::env::current_dir().expect("current dir should be available");
     let temp = tempdir().expect("temp dir should be created");
-    std::env::set_current_dir(temp.path()).expect("should switch current dir");
-
-    let flag = model_flag_path();
-    let _ = std::fs::remove_file(&flag);
+    unsafe { std::env::set_var("DICTATION_MODEL_BASE_DIR", temp.path()) };
 
     let app = VoiceApp::new(
       Arc::new(AtomicU32::new(0)),
@@ -120,7 +131,7 @@ mod tests {
     assert_eq!(app.transcription_rendered_at, None);
     assert_eq!(app.ui_state, UIState::ModelDownloading);
 
-    std::env::set_current_dir(old_cwd).expect("should restore current dir");
+    unsafe { std::env::remove_var("DICTATION_MODEL_BASE_DIR") };
   }
 
   #[test]
@@ -128,12 +139,21 @@ mod tests {
     let _guard = TEST_CWD_LOCK
       .lock()
       .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let old_cwd = std::env::current_dir().expect("current dir should be available");
     let temp = tempdir().expect("temp dir should be created");
-    std::env::set_current_dir(temp.path()).expect("should switch current dir");
+    unsafe { std::env::set_var("DICTATION_MODEL_BASE_DIR", temp.path()) };
 
-    let flag = model_flag_path();
-    std::fs::write(&flag, b"downloaded").expect("should create model flag");
+    let model_dir = model_dir_path();
+    std::fs::create_dir_all(&model_dir).expect("should create model dir");
+    for file in [
+      "encoder-model.int8.onnx",
+      "decoder_joint-model.int8.onnx",
+      "nemo128.onnx",
+      "vocab.txt",
+    ] {
+      std::fs::write(model_dir.join(file), b"x").expect("should create model file");
+    }
+    std::fs::write(model_dir.join("download.success.flag"), b"downloaded")
+      .expect("should create model success flag");
 
     let app = VoiceApp::new(
       Arc::new(AtomicU32::new(0)),
@@ -144,7 +164,6 @@ mod tests {
 
     assert_eq!(app.ui_state, UIState::VisualizerRecording);
 
-    let _ = std::fs::remove_file(&flag);
-    std::env::set_current_dir(old_cwd).expect("should restore current dir");
+    unsafe { std::env::remove_var("DICTATION_MODEL_BASE_DIR") };
   }
 }

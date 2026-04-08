@@ -74,6 +74,10 @@ fn main() -> eframe::Result<()> {
         if is_toggle_key(key) && !hotkey_was_pressed {
           hotkey_was_pressed = true;
 
+          if !app::is_model_ready() {
+            return;
+          }
+
           // Toggle recording
           if recording_state_clone.is_recording() {
             // Stop recording
