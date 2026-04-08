@@ -13,3 +13,4 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 tray-icon = "0.19"
 image = { version = "0.25", default-features = false, features = ["png"] }
 winit = "0.30"
+single-instance = "0.3"

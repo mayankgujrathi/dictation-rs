@@ -1179,6 +1179,7 @@ dependencies = [
  "hound",
  "image 0.25.10",
  "rdev",
+ "single-instance",
  "tempfile",
  "tokio",
  "tray-icon",
@@ -2136,7 +2137,7 @@ dependencies = [
  "libc",
  "libloading 0.8.9",
  "thiserror 1.0.69",
- "widestring",
+ "widestring 1.2.1",
  "winapi",
 ]
 
@@ -2680,6 +2681,15 @@ dependencies = [
 
 [[package]]
 name = "memoffset"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5aa361d4faea93603064a027415f07bd8e1d5c88c9fbf68bf56a285428fd79ce"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
+name = "memoffset"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5de893c32cde5f383baa4c04c5d6dbdd735cfd4a794b0debdb2bb1b421da5ff4"
@@ -2830,6 +2840,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee6cda3051665f1fb8d9e08fc35c96d5a244fb1be711a03b71118828afc9a873"
 dependencies = [
  "jni-sys 0.3.1",
+]
+
+[[package]]
+name = "nix"
+version = "0.23.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f3790c00a0150112de0f4cd161e3d7fc4b2d8a5542ffc35f099a2562aecb35c"
+dependencies = [
+ "bitflags 1.3.2",
+ "cc",
+ "cfg-if",
+ "libc",
+ "memoffset 0.6.5",
 ]
 
 [[package]]
@@ -3981,6 +4004,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
 
 [[package]]
+name = "single-instance"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4637485391f8545c9d3dbf60f9d9aab27a90c789a700999677583bcb17c8795d"
+dependencies = [
+ "libc",
+ "nix 0.23.2",
+ "thiserror 1.0.69",
+ "widestring 0.4.3",
+ "winapi",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4972,6 +5008,12 @@ dependencies = [
 
 [[package]]
 name = "widestring"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c168940144dd21fd8046987c16a46a33d5fc84eec29ef9dcddc2ac9e31526b7c"
+
+[[package]]
+name = "widestring"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72069c3113ab32ab29e5584db3c6ec55d416895e60715417b5b883a357c3e471"
@@ -5734,7 +5776,7 @@ dependencies = [
  "futures-sink",
  "futures-util",
  "hex",
- "nix",
+ "nix 0.26.4",
  "once_cell",
  "ordered-stream",
  "rand",

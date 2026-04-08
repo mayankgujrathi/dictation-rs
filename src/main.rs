@@ -8,8 +8,17 @@ use std::sync::{
 };
 
 use eframe::egui;
+use single_instance::SingleInstance;
 
 fn main() -> eframe::Result<()> {
+  // Prevent launching multiple app instances.
+  let instance = SingleInstance::new("dictation-rs-single-instance")
+    .expect("Failed to create app instance lock");
+  if !instance.is_single() {
+    eprintln!("Dictation is already running. Exiting duplicate instance.");
+    return Ok(());
+  }
+
   let runtime = tokio::runtime::Builder::new_multi_thread()
     .enable_all()
     .thread_name("dictation-worker")
