@@ -48,9 +48,9 @@ pub(crate) fn is_model_downloaded() -> bool {
   MODEL_FILES.iter().all(|name| model_dir.join(name).exists())
 }
 
-fn placeholder_transcribe_call() -> Result<(), ()> {
+fn transcribe_call() -> Result<(), ()> {
   std::thread::sleep(Duration::from_millis(2500));
-  Ok(())
+  Err(())
 }
 
 fn run_model_download(progress: Arc<AtomicU32>) {
@@ -158,7 +158,7 @@ fn run_model_download(progress: Arc<AtomicU32>) {
 }
 
 fn run_transcription(status_slot: Arc<Mutex<Option<bool>>>) {
-  let is_error = placeholder_transcribe_call().is_err();
+  let is_error = transcribe_call().is_err();
   if let Ok(mut slot) = status_slot.lock() {
     *slot = Some(is_error);
   }

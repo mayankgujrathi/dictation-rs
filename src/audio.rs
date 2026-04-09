@@ -4,13 +4,196 @@ use std::sync::{
 };
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use hound::{WavSpec, WavWriter};
+use directories::ProjectDirs;
+use hound::{WavReader, WavSpec, WavWriter};
+
+const TARGET_RMS: f32 = 0.12;
+const MIN_GAIN: f32 = 0.8;
+const MAX_GAIN: f32 = 6.0;
+const PEAK_LIMIT: f32 = 0.95;
+const HISS_SMOOTHING_ALPHA: f32 = 0.25;
 
 /// Calculate RMS (Root Mean Square) from audio samples for volume monitoring
 pub fn calculate_rms_volume(samples: &[f32]) -> u32 {
+  if samples.is_empty() {
+    return 0;
+  }
+
   let sum_sq: f32 = samples.iter().map(|&s| s * s).sum();
   let rms = (sum_sq / samples.len() as f32).sqrt();
   (rms * 1000.0) as u32
+}
+
+fn calculate_rms(samples: &[f32]) -> f32 {
+  if samples.is_empty() {
+    return 0.0;
+  }
+
+  let sum_sq: f32 = samples.iter().map(|&s| s * s).sum();
+  (sum_sq / samples.len() as f32).sqrt()
+}
+
+fn model_base_dir() -> std::path::PathBuf {
+  if let Ok(override_path) = std::env::var("DICTATION_MODEL_BASE_DIR") {
+    return std::path::PathBuf::from(override_path);
+  }
+
+  ProjectDirs::from("com", "dictation", "dictation")
+    .map(|dirs| dirs.data_dir().to_path_buf())
+    .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir()))
+}
+
+pub fn recording_output_path() -> std::path::PathBuf {
+  model_base_dir()
+    .join("run")
+    .join("audio")
+    .join("recording.wav")
+}
+
+fn sample_to_i16(sample: f32) -> i16 {
+  (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16
+}
+
+/// Estimate noise floor using lower-energy (20th percentile) absolute sample magnitudes.
+pub fn estimate_noise_floor(samples: &[f32]) -> f32 {
+  if samples.is_empty() {
+    return 0.0;
+  }
+
+  let mut magnitudes: Vec<f32> = samples.iter().map(|s| s.abs()).collect();
+  magnitudes.sort_by(f32::total_cmp);
+  let idx = ((magnitudes.len() as f32) * 0.2) as usize;
+  magnitudes[idx.min(magnitudes.len() - 1)]
+}
+
+/// Reduce low-level background noise with soft attenuation below threshold.
+pub fn remove_background_noise(samples: &mut [f32], noise_floor: f32) {
+  if samples.is_empty() {
+    return;
+  }
+
+  let threshold = (noise_floor * 2.5).max(0.003);
+  let min_attenuation = 0.2;
+
+  for sample in samples.iter_mut() {
+    let amp = sample.abs();
+    if amp < threshold {
+      let ratio = if threshold > 0.0 {
+        amp / threshold
+      } else {
+        0.0
+      };
+      let soft_scale = min_attenuation + (1.0 - min_attenuation) * ratio;
+      *sample *= soft_scale;
+    }
+  }
+}
+
+/// Tame sharp high-frequency background hiss using a gentle low-pass blend.
+/// This preserves most voice energy while smoothing harsh high-frequency noise.
+pub fn tame_high_frequency_hiss(samples: &mut [f32], alpha: f32, blend: f32) {
+  if samples.is_empty() {
+    return;
+  }
+
+  let a = alpha.clamp(0.01, 0.99);
+  let mix = blend.clamp(0.0, 1.0);
+  let mut smooth = samples[0];
+
+  for sample in samples.iter_mut() {
+    smooth = a * *sample + (1.0 - a) * smooth;
+    // Mix toward smoothed value; reduces harshness while retaining speech shape.
+    *sample = *sample * (1.0 - mix) + smooth * mix;
+  }
+}
+
+/// Normalize towards a target RMS with bounded gain.
+pub fn normalize_target_rms(
+  samples: &mut [f32],
+  target_rms: f32,
+  min_gain: f32,
+  max_gain: f32,
+) -> f32 {
+  let rms = calculate_rms(samples);
+  if rms <= f32::EPSILON {
+    return 1.0;
+  }
+
+  let gain = (target_rms / rms).clamp(min_gain, max_gain);
+  for sample in samples.iter_mut() {
+    *sample *= gain;
+  }
+  gain
+}
+
+/// Soft peak limiting to avoid clipping artifacts.
+pub fn limit_peaks(samples: &mut [f32], threshold: f32) {
+  if threshold <= 0.0 {
+    return;
+  }
+
+  for sample in samples.iter_mut() {
+    let amp = sample.abs();
+    if amp > threshold {
+      let sign = sample.signum();
+      let excess = amp - threshold;
+      let compressed = threshold + (excess / (1.0 + excess / (1.0 - threshold)));
+      *sample = sign * compressed.min(1.0);
+    }
+    *sample = sample.clamp(-1.0, 1.0);
+  }
+}
+
+/// End-to-end post-processing pipeline to stabilize voice level and suppress noise.
+pub fn process_audio_for_saving(samples: &mut [f32]) {
+  if samples.is_empty() {
+    return;
+  }
+
+  let noise_floor = estimate_noise_floor(samples);
+  remove_background_noise(samples, noise_floor);
+  // Extra pass to reduce sharp hiss-like background noise.
+  tame_high_frequency_hiss(samples, HISS_SMOOTHING_ALPHA, 0.35);
+  normalize_target_rms(samples, TARGET_RMS, MIN_GAIN, MAX_GAIN);
+  limit_peaks(samples, PEAK_LIMIT);
+}
+
+fn post_process_and_save(temp_path: &std::path::Path) -> Result<(), String> {
+  let mut reader = WavReader::open(temp_path).map_err(|e| format!("open temp wav failed: {e}"))?;
+  let input_spec = reader.spec();
+
+  let mut samples: Vec<f32> = reader
+    .samples::<i16>()
+    .filter_map(Result::ok)
+    .map(|s| s as f32 / i16::MAX as f32)
+    .collect();
+
+  process_audio_for_saving(&mut samples);
+
+  let output_path = recording_output_path();
+  if let Some(parent) = output_path.parent() {
+    std::fs::create_dir_all(parent).map_err(|e| format!("create output dir failed: {e}"))?;
+  }
+
+  let out_spec = WavSpec {
+    channels: 1,
+    sample_rate: input_spec.sample_rate,
+    bits_per_sample: 16,
+    sample_format: hound::SampleFormat::Int,
+  };
+
+  let mut writer = WavWriter::create(&output_path, out_spec)
+    .map_err(|e| format!("create output wav failed: {e}"))?;
+  for sample in samples {
+    writer
+      .write_sample(sample_to_i16(sample))
+      .map_err(|e| format!("write output sample failed: {e}"))?;
+  }
+  writer
+    .finalize()
+    .map_err(|e| format!("finalize output wav failed: {e}"))?;
+
+  Ok(())
 }
 
 /// Mix multiple channels into a single mono sample by averaging
@@ -234,12 +417,11 @@ impl RecordingState {
         }
       }
 
-      // Copy the temp file to the final location
+      // Post-process and save output to run/audio/recording.wav under model-base path
       if std::path::Path::new(&temp_path).exists() {
-        let final_path = std::env::current_dir()
-          .unwrap_or_else(|_| std::env::temp_dir())
-          .join("recording.wav");
-        let _ = std::fs::copy(&temp_path, &final_path);
+        if let Err(e) = post_process_and_save(&temp_path) {
+          eprintln!("Audio post-processing failed: {e}");
+        }
         // Clean up temp file
         let _ = std::fs::remove_file(&temp_path);
       }

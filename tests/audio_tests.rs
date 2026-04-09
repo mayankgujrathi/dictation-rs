@@ -2,7 +2,11 @@
 //!
 //! Tests for pure functions and logic in the audio processing pipeline.
 
-use dictation::audio::calculate_rms_volume;
+use dictation::audio::{
+  calculate_rms_volume, estimate_noise_floor, limit_peaks, normalize_target_rms,
+  process_audio_for_saving, recording_output_path, remove_background_noise,
+  tame_high_frequency_hiss,
+};
 use std::f32::consts::PI;
 
 /// Calculate RMS without the volume scaling (returns raw f32)
@@ -446,5 +450,92 @@ mod private_function_tests {
 
     let (output2, _) = simulate_resampling(3, 1, 2.0, acc1);
     assert_eq!(output2, 2);
+  }
+}
+
+#[cfg(test)]
+mod post_processing_tests {
+  use super::*;
+
+  fn rms(samples: &[f32]) -> f32 {
+    if samples.is_empty() {
+      return 0.0;
+    }
+    let sum_sq: f32 = samples.iter().map(|s| s * s).sum();
+    (sum_sq / samples.len() as f32).sqrt()
+  }
+
+  #[test]
+  fn test_estimate_noise_floor_for_mostly_low_level_noise() {
+    let mut samples = vec![0.002f32; 80];
+    samples.extend(std::iter::repeat_n(0.2f32, 20));
+
+    let floor = estimate_noise_floor(&samples);
+    assert!(floor >= 0.001 && floor <= 0.01);
+  }
+
+  #[test]
+  fn test_remove_background_noise_attenuates_quiet_signal() {
+    let mut samples = vec![0.001f32, -0.0012, 0.0015, -0.0018];
+    let before_energy: f32 = samples.iter().map(|s| s.abs()).sum();
+
+    remove_background_noise(&mut samples, 0.001);
+
+    let after_energy: f32 = samples.iter().map(|s| s.abs()).sum();
+    assert!(after_energy < before_energy);
+  }
+
+  #[test]
+  fn test_normalize_target_rms_boosts_low_voice() {
+    let mut samples = vec![0.01f32; 512];
+    let before = rms(&samples);
+
+    let gain = normalize_target_rms(&mut samples, 0.1, 0.5, 10.0);
+    let after = rms(&samples);
+
+    assert!(gain > 1.0);
+    assert!(after > before);
+  }
+
+  #[test]
+  fn test_limit_peaks_prevents_clipping() {
+    let mut samples = vec![1.4f32, -1.3, 0.2, -0.1];
+    limit_peaks(&mut samples, 0.95);
+
+    assert!(samples.iter().all(|s| s.abs() <= 1.0));
+    assert!(samples[0].abs() < 1.4);
+    assert!(samples[1].abs() < 1.3);
+  }
+
+  #[test]
+  fn test_process_audio_for_saving_stabilizes_and_bounds() {
+    let mut samples: Vec<f32> = (0..1600)
+      .map(|i| if i % 13 == 0 { 0.001 } else { 0.03 })
+      .collect();
+
+    process_audio_for_saving(&mut samples);
+
+    assert!(samples.iter().all(|s| s.abs() <= 1.0));
+    let out_rms = rms(&samples);
+    assert!(out_rms > 0.03);
+    assert!(out_rms < 0.25);
+  }
+
+  #[test]
+  fn test_tame_high_frequency_hiss_smooths_rapid_alternation() {
+    let mut samples = vec![0.3f32, -0.3, 0.3, -0.3, 0.3, -0.3, 0.3, -0.3];
+    let before_diff: f32 = samples.windows(2).map(|w| (w[1] - w[0]).abs()).sum();
+
+    tame_high_frequency_hiss(&mut samples, 0.25, 0.5);
+
+    let after_diff: f32 = samples.windows(2).map(|w| (w[1] - w[0]).abs()).sum();
+    assert!(after_diff < before_diff);
+  }
+
+  #[test]
+  fn test_recording_output_path_uses_run_audio_recording_wav() {
+    let path = recording_output_path();
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    assert!(normalized.ends_with("/run/audio/recording.wav"));
   }
 }
