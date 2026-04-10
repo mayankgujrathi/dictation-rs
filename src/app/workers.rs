@@ -9,6 +9,12 @@ use directories::ProjectDirs;
 use reqwest::blocking::Client;
 use reqwest::redirect::Policy;
 
+use crate::audio::recording_output_path;
+use std::path::PathBuf;
+use transcribe_rs::onnx::Quantization;
+use transcribe_rs::onnx::parakeet::{ParakeetModel, ParakeetParams, TimestampGranularity};
+use transcribe_rs::{OrtAccelerator, set_ort_accelerator};
+
 use super::VoiceApp;
 
 const MODEL_DIR_NAME: &str = "parakeet-tdt-0.6b-v3-int8";
@@ -38,6 +44,50 @@ fn model_success_flag_path() -> std::path::PathBuf {
   model_dir_path().join(MODEL_SUCCESS_FLAG)
 }
 
+fn has_invalid_text_signature(path: &std::path::Path) -> bool {
+  let mut buf = [0_u8; 64];
+  let Ok(mut f) = std::fs::File::open(path) else {
+    return true;
+  };
+  let Ok(n) = f.read(&mut buf) else {
+    return true;
+  };
+  let head = String::from_utf8_lossy(&buf[..n]).to_ascii_lowercase();
+  head.contains("<html")
+    || head.contains("<!doctype")
+    || head.contains("git-lfs.github.com/spec/v1")
+}
+
+fn is_model_file_sane(path: &std::path::Path) -> bool {
+  let Ok(meta) = std::fs::metadata(path) else {
+    return false;
+  };
+  if !meta.is_file() {
+    return false;
+  }
+
+  let size = meta.len();
+  if size == 0 {
+    return false;
+  }
+
+  let ext = path
+    .extension()
+    .and_then(|e| e.to_str())
+    .unwrap_or_default();
+  if ext.eq_ignore_ascii_case("onnx") {
+    // Reject tiny files and obvious text/HTML/LFS pointer responses.
+    if size < 1024 {
+      return false;
+    }
+    if has_invalid_text_signature(path) {
+      return false;
+    }
+  }
+
+  true
+}
+
 pub(crate) fn is_model_downloaded() -> bool {
   let model_dir = model_dir_path();
 
@@ -45,12 +95,36 @@ pub(crate) fn is_model_downloaded() -> bool {
     return false;
   }
 
-  MODEL_FILES.iter().all(|name| model_dir.join(name).exists())
+  MODEL_FILES
+    .iter()
+    .all(|name| is_model_file_sane(&model_dir.join(name)))
 }
 
 fn transcribe_call() -> Result<(), ()> {
-  std::thread::sleep(Duration::from_millis(2500));
-  Err(())
+  set_ort_accelerator(OrtAccelerator::Auto);
+  let model = ParakeetModel::load(&PathBuf::from(model_dir_path()), &Quantization::Int8);
+  let Ok(mut model) = model else {
+    eprintln!("Unable to load model: {:?}", model.err());
+    return Err(());
+  };
+  let samples = transcribe_rs::audio::read_wav_samples(&recording_output_path());
+  let Ok(samples) = samples else {
+    eprintln!("Unable to load recording file: {:?}", samples.err());
+    return Err(());
+  };
+  let result = model.transcribe_with(
+    &samples,
+    &ParakeetParams {
+      timestamp_granularity: Some(TimestampGranularity::Segment),
+      ..Default::default()
+    },
+  );
+  let Ok(result) = result else {
+    eprintln!("Unable to transcribe: {:?}", result.err());
+    return Err(());
+  };
+  println!("Transcription: {:?}", result);
+  Ok(())
 }
 
 fn run_model_download(progress: Arc<AtomicU32>) {
@@ -224,11 +298,45 @@ mod tests {
     let model_dir = model_dir_path();
     std::fs::create_dir_all(&model_dir).expect("should create model dir");
     for file in MODEL_FILES {
-      std::fs::write(model_dir.join(file), b"x").expect("should create model file");
+      if file.ends_with(".onnx") {
+        std::fs::write(model_dir.join(file), vec![7_u8; 2048])
+          .expect("should create sane onnx model file");
+      } else {
+        std::fs::write(model_dir.join(file), b"x").expect("should create model file");
+      }
     }
     std::fs::write(model_success_flag_path(), b"downloaded").expect("should create model flag");
 
     assert!(is_model_downloaded());
+
+    unsafe { std::env::remove_var("DICTATION_MODEL_BASE_DIR") };
+  }
+
+  #[test]
+  fn test_model_downloaded_false_when_onnx_is_html() {
+    let _guard = match TEST_CWD_LOCK.lock() {
+      Ok(g) => g,
+      Err(e) => e.into_inner(),
+    };
+    let temp = tempdir().expect("temp dir should be created");
+    unsafe { std::env::set_var("DICTATION_MODEL_BASE_DIR", temp.path()) };
+
+    let model_dir = model_dir_path();
+    std::fs::create_dir_all(&model_dir).expect("should create model dir");
+    for file in MODEL_FILES {
+      if file == "encoder-model.int8.onnx" {
+        std::fs::write(model_dir.join(file), b"<html>bad response</html>")
+          .expect("should create bad onnx file");
+      } else if file.ends_with(".onnx") {
+        std::fs::write(model_dir.join(file), vec![7_u8; 2048])
+          .expect("should create sane onnx model file");
+      } else {
+        std::fs::write(model_dir.join(file), b"x").expect("should create model file");
+      }
+    }
+    std::fs::write(model_success_flag_path(), b"downloaded").expect("should create model flag");
+
+    assert!(!is_model_downloaded());
 
     unsafe { std::env::remove_var("DICTATION_MODEL_BASE_DIR") };
   }

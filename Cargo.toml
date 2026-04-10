@@ -16,4 +16,4 @@ winit = "0.30"
 single-instance = "0.3"
 directories = "5"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
-transcribe-rs = { version = "0.3", features = ["onnx"] }
+transcribe-rs = { version = "0.3", features = ["onnx", "ort-cuda", "ort-rocm", "ort-directml", "ort-coreml"]}
