@@ -236,6 +236,8 @@ pub struct RecordingState {
   pub is_recording: Arc<AtomicBool>,
   /// Flag to indicate microphone stream is successfully initialized and running
   pub mic_ready: Arc<AtomicBool>,
+  /// Flag to indicate current recording cycle output file is finalized and ready for transcription
+  pub recording_ready: Arc<AtomicBool>,
 }
 
 impl RecordingState {
@@ -244,6 +246,7 @@ impl RecordingState {
       volume_level: Arc::new(AtomicU32::new(0)),
       is_recording: Arc::new(AtomicBool::new(false)),
       mic_ready: Arc::new(AtomicBool::new(false)),
+      recording_ready: Arc::new(AtomicBool::new(true)),
     }
   }
 
@@ -267,6 +270,9 @@ impl RecordingState {
     // Runtime readiness: mic stream not ready until initialization succeeds
     self
       .mic_ready
+      .store(false, std::sync::atomic::Ordering::SeqCst);
+    self
+      .recording_ready
       .store(false, std::sync::atomic::Ordering::SeqCst);
 
     let state = self.clone();
@@ -436,6 +442,11 @@ impl RecordingState {
         // Clean up temp file
         let _ = std::fs::remove_file(&temp_path);
       }
+
+      // Signal that this recording cycle is fully finalized (success or failure).
+      state
+        .recording_ready
+        .store(true, std::sync::atomic::Ordering::SeqCst);
     });
   }
 }

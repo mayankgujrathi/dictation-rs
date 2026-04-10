@@ -1,8 +1,8 @@
 use std::sync::{
-  Arc, Mutex,
+  Arc, Mutex, OnceLock,
   atomic::{AtomicU32, Ordering},
 };
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{io::Read, io::Write};
 
 use directories::ProjectDirs;
@@ -27,6 +27,35 @@ const MODEL_FILES: [&str; 4] = [
   "vocab.txt",
 ];
 const MODEL_SUCCESS_FLAG: &str = "download.success.flag";
+const MODEL_IDLE_TTL_SECS: u64 = 10 * 60;
+
+struct CachedParakeetModel {
+  model: ParakeetModel,
+  last_used_at: Instant,
+}
+
+static MODEL_CACHE: OnceLock<Mutex<Option<CachedParakeetModel>>> =
+  OnceLock::new();
+
+fn model_cache() -> &'static Mutex<Option<CachedParakeetModel>> {
+  MODEL_CACHE.get_or_init(|| Mutex::new(None))
+}
+
+fn model_cache_ttl() -> Duration {
+  let ttl_secs = std::env::var("DICTATION_MODEL_CACHE_TTL_SECS")
+    .ok()
+    .and_then(|v| v.parse::<u64>().ok())
+    .unwrap_or(MODEL_IDLE_TTL_SECS);
+  Duration::from_secs(ttl_secs)
+}
+
+fn is_cache_entry_expired(
+  last_used_at: Instant,
+  now: Instant,
+  ttl: Duration,
+) -> bool {
+  now.saturating_duration_since(last_used_at) >= ttl
+}
 
 fn model_base_dir() -> std::path::PathBuf {
   if let Ok(override_path) = std::env::var("DICTATION_MODEL_BASE_DIR") {
@@ -106,10 +135,41 @@ pub(crate) fn is_model_downloaded() -> bool {
 
 fn transcribe_call() -> Result<(), ()> {
   set_ort_accelerator(OrtAccelerator::Auto);
-  let model =
-    ParakeetModel::load(&PathBuf::from(model_dir_path()), &Quantization::Int8);
-  let Ok(mut model) = model else {
-    eprintln!("Unable to load model: {:?}", model.err());
+  let cache = model_cache();
+  let mut cache_guard = match cache.lock() {
+    Ok(g) => g,
+    Err(e) => e.into_inner(),
+  };
+
+  let now = Instant::now();
+  let ttl = model_cache_ttl();
+
+  let should_reload = match cache_guard.as_ref() {
+    Some(entry) => is_cache_entry_expired(entry.last_used_at, now, ttl),
+    None => true,
+  };
+
+  if should_reload {
+    // Drop expired/missing model and load a fresh one.
+    *cache_guard = None;
+
+    let load_result = ParakeetModel::load(
+      &PathBuf::from(model_dir_path()),
+      &Quantization::Int8,
+    );
+    let Ok(model) = load_result else {
+      eprintln!("Unable to load model: {:?}", load_result.err());
+      return Err(());
+    };
+
+    *cache_guard = Some(CachedParakeetModel {
+      model,
+      last_used_at: now,
+    });
+  }
+
+  let Some(entry) = cache_guard.as_mut() else {
+    eprintln!("Model cache unexpectedly empty after load/check");
     return Err(());
   };
   let samples =
@@ -118,7 +178,7 @@ fn transcribe_call() -> Result<(), ()> {
     eprintln!("Unable to load recording file: {:?}", samples.err());
     return Err(());
   };
-  let result = model.transcribe_with(
+  let result = entry.model.transcribe_with(
     &samples,
     &ParakeetParams {
       timestamp_granularity: Some(TimestampGranularity::Segment),
@@ -129,6 +189,7 @@ fn transcribe_call() -> Result<(), ()> {
     eprintln!("Unable to transcribe: {:?}", result.err());
     return Err(());
   };
+  entry.last_used_at = Instant::now();
   println!("Transcription: {:?}", result);
   Ok(())
 }
@@ -273,6 +334,25 @@ mod tests {
   use super::*;
   use crate::app::TEST_CWD_LOCK;
   use tempfile::tempdir;
+
+  #[test]
+  fn test_cache_entry_expiry_logic() {
+    let now = Instant::now();
+    let ttl = Duration::from_secs(600);
+
+    let fresh = now - Duration::from_secs(100);
+    let expired = now - Duration::from_secs(700);
+
+    assert!(!is_cache_entry_expired(fresh, now, ttl));
+    assert!(is_cache_entry_expired(expired, now, ttl));
+  }
+
+  #[test]
+  fn test_model_cache_ttl_reads_env_override() {
+    unsafe { std::env::set_var("DICTATION_MODEL_CACHE_TTL_SECS", "5") };
+    assert_eq!(model_cache_ttl(), Duration::from_secs(5));
+    unsafe { std::env::remove_var("DICTATION_MODEL_CACHE_TTL_SECS") };
+  }
 
   #[test]
   fn test_model_downloaded_false_when_success_flag_absent() {

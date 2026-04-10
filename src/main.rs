@@ -43,6 +43,7 @@ fn main() -> eframe::Result<()> {
   let volume_level = recording_state.volume_level.clone();
   let is_recording = recording_state.is_recording.clone();
   let mic_ready = recording_state.mic_ready.clone();
+  let recording_ready = recording_state.recording_ready.clone();
 
   // Set up global keyboard listener for modifier-key toggle
   // Windows/Linux: Ctrl
@@ -122,6 +123,7 @@ fn main() -> eframe::Result<()> {
         volume_level,
         is_recording,
         mic_ready,
+        recording_ready,
         should_exit,
       ))
     }),

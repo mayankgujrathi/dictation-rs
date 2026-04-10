@@ -352,6 +352,7 @@ mod recording_state_tests {
 
     assert_eq!(state.volume_level.load(Ordering::Relaxed), 0);
     assert!(!state.is_recording());
+    assert!(state.recording_ready.load(Ordering::SeqCst));
   }
 
   #[test]
@@ -406,10 +407,12 @@ mod recording_state_tests {
     let cloned = state.clone();
 
     state.set_recording(true);
+    state.recording_ready.store(false, Ordering::SeqCst);
 
     // Clone should see the same state
     assert!(cloned.is_recording());
     assert!(state.is_recording());
+    assert!(!cloned.recording_ready.load(Ordering::SeqCst));
   }
 }
 

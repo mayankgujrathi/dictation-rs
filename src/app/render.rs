@@ -87,6 +87,7 @@ impl VoiceApp {
   ) {
     let is_recording = self.is_recording.load(Ordering::SeqCst);
     let mic_ready = self.mic_ready.load(Ordering::SeqCst);
+    let recording_ready = self.recording_ready.load(Ordering::SeqCst);
     let actively_recording = is_recording && mic_ready;
 
     if actively_recording {
@@ -101,8 +102,14 @@ impl VoiceApp {
 
     if !actively_recording {
       if self.saw_recording_active {
-        self.ui_state = UIState::Transcribing;
-        ctx.request_repaint();
+        if recording_ready {
+          self.ui_state = UIState::Transcribing;
+          ctx.request_repaint();
+        } else {
+          // Wait until current recording output is finalized before transcribing,
+          // to avoid transcribing a stale previous file.
+          self.enter_idle_mode(ctx);
+        }
       } else {
         // Idle state: keep loop responsive while minimizing resource usage.
         self.enter_idle_mode(ctx);

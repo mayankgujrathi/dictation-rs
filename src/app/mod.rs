@@ -22,6 +22,7 @@ pub struct VoiceApp {
   pub(crate) volume_atomic: Arc<AtomicU32>,
   pub(crate) is_recording: Arc<AtomicBool>,
   pub(crate) mic_ready: Arc<AtomicBool>,
+  pub(crate) recording_ready: Arc<AtomicBool>,
   pub(crate) should_exit: Arc<AtomicBool>,
   pub(crate) ui_state: UIState,
   pub(crate) history: VecDeque<f32>,
@@ -39,6 +40,7 @@ impl VoiceApp {
     volume_atomic: Arc<AtomicU32>,
     is_recording: Arc<AtomicBool>,
     mic_ready: Arc<AtomicBool>,
+    recording_ready: Arc<AtomicBool>,
     should_exit: Arc<AtomicBool>,
   ) -> Self {
     let initial_state = if workers::is_model_downloaded() {
@@ -51,6 +53,7 @@ impl VoiceApp {
       volume_atomic,
       is_recording,
       mic_ready,
+      recording_ready,
       should_exit,
       ui_state: initial_state,
       history: VecDeque::from(vec![0.0; HISTORY_LEN]),
@@ -80,6 +83,12 @@ mod tests {
   use tempfile::tempdir;
 
   fn model_dir_path() -> std::path::PathBuf {
+    if let Ok(override_path) = std::env::var("DICTATION_MODEL_BASE_DIR") {
+      return std::path::PathBuf::from(override_path)
+        .join("models")
+        .join("parakeet-tdt-0.6b-v3-int8");
+    }
+
     ProjectDirs::from("com", "dictation", "dictation")
       .map(|dirs| {
         dirs
@@ -107,6 +116,7 @@ mod tests {
       Arc::new(AtomicU32::new(0)),
       Arc::new(AtomicBool::new(false)),
       Arc::new(AtomicBool::new(false)),
+      Arc::new(AtomicBool::new(true)),
       Arc::new(AtomicBool::new(false)),
     );
 
@@ -151,8 +161,13 @@ mod tests {
       "nemo128.onnx",
       "vocab.txt",
     ] {
-      std::fs::write(model_dir.join(file), b"x")
-        .expect("should create model file");
+      if file.ends_with(".onnx") {
+        std::fs::write(model_dir.join(file), vec![7_u8; 2048])
+          .expect("should create sane onnx model file");
+      } else {
+        std::fs::write(model_dir.join(file), b"x")
+          .expect("should create model file");
+      }
     }
     std::fs::write(model_dir.join("download.success.flag"), b"downloaded")
       .expect("should create model success flag");
@@ -161,6 +176,7 @@ mod tests {
       Arc::new(AtomicU32::new(0)),
       Arc::new(AtomicBool::new(false)),
       Arc::new(AtomicBool::new(false)),
+      Arc::new(AtomicBool::new(true)),
       Arc::new(AtomicBool::new(false)),
     );
 
