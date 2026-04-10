@@ -4,9 +4,8 @@
 
 use dictation::audio::{
   calculate_rms_volume, estimate_noise_floor, limit_peaks,
-  normalize_target_rms, process_audio_for_saving,
-  recording_output_path, remove_background_noise,
-  tame_high_frequency_hiss,
+  normalize_target_rms, process_audio_for_saving, recording_output_path,
+  remove_background_noise, tame_high_frequency_hiss,
 };
 use std::f32::consts::PI;
 
@@ -47,10 +46,7 @@ pub fn simulate_resampling(
 }
 
 /// Converts multi-channel samples to mono by averaging channels.
-pub fn to_mono(
-  samples: &[f32],
-  channels: usize,
-) -> Vec<f32> {
+pub fn to_mono(samples: &[f32], channels: usize) -> Vec<f32> {
   if channels == 0 {
     return vec![];
   }
@@ -152,8 +148,7 @@ mod rms_tests {
   }
 
   #[test]
-  fn test_calculate_rms_volume_empty_returns_zero_current_behavior()
-   {
+  fn test_calculate_rms_volume_empty_returns_zero_current_behavior() {
     let samples: [f32; 0] = [];
     // Current implementation evaluates to NaN internally and final cast yields 0.
     assert_eq!(calculate_rms_volume(&samples), 0);
@@ -233,8 +228,7 @@ mod resampling_tests {
   #[test]
   fn test_resampling_no_downsampling() {
     // sample_drop_ratio = 1.0 means 1:1 ratio
-    let (output, final_acc) =
-      simulate_resampling(100, 1, 1.0, 0.0);
+    let (output, final_acc) = simulate_resampling(100, 1, 1.0, 0.0);
     assert_eq!(output, 100);
     assert!((final_acc - 0.0).abs() < f64::EPSILON);
   }
@@ -242,8 +236,7 @@ mod resampling_tests {
   #[test]
   fn test_resampling_2x_downsampling() {
     // sample_drop_ratio = 2.0 means half the samples are kept
-    let (output, _final_acc) =
-      simulate_resampling(100, 1, 2.0, 0.0);
+    let (output, _final_acc) = simulate_resampling(100, 1, 2.0, 0.0);
     assert_eq!(output, 50);
   }
 
@@ -260,8 +253,7 @@ mod resampling_tests {
     let source_rate = 44100.0;
     let target_rate = 16000.0;
     let ratio = source_rate / target_rate;
-    let (output, _) =
-      simulate_resampling(44100, 1, ratio, 0.0);
+    let (output, _) = simulate_resampling(44100, 1, ratio, 0.0);
     // Should be approximately 16000 samples
     assert!(output >= 15900 && output <= 16100);
   }
@@ -269,12 +261,9 @@ mod resampling_tests {
   #[test]
   fn test_resampling_accumulator_propagation() {
     // Test that accumulator state is properly maintained
-    let (output1, acc1) =
-      simulate_resampling(50, 1, 2.5, 0.0);
-    let (output2, _acc2) =
-      simulate_resampling(50, 1, 2.5, acc1);
-    let (output_combined, _) =
-      simulate_resampling(100, 1, 2.5, 0.0);
+    let (output1, acc1) = simulate_resampling(50, 1, 2.5, 0.0);
+    let (output2, _acc2) = simulate_resampling(50, 1, 2.5, acc1);
+    let (output_combined, _) = simulate_resampling(100, 1, 2.5, 0.0);
 
     // Combined should equal sum of individual outputs
     assert_eq!(output1 + output2, output_combined);
@@ -282,8 +271,7 @@ mod resampling_tests {
 
   #[test]
   fn test_resampling_empty_input() {
-    let (output, final_acc) =
-      simulate_resampling(0, 1, 2.0, 0.0);
+    let (output, final_acc) = simulate_resampling(0, 1, 2.0, 0.0);
     assert_eq!(output, 0);
     assert!((final_acc - 0.0).abs() < f64::EPSILON);
   }
@@ -292,8 +280,7 @@ mod resampling_tests {
   fn test_resampling_48000_to_16000() {
     // 48kHz to 16kHz = 3x downsampling
     let ratio = 48000.0 / 16000.0;
-    let (output, _) =
-      simulate_resampling(48000, 1, ratio, 0.0);
+    let (output, _) = simulate_resampling(48000, 1, ratio, 0.0);
     assert_eq!(output, 16000);
   }
 }
@@ -322,8 +309,7 @@ mod mono_conversion_tests {
   #[test]
   fn test_to_mono_five_channel() {
     // All channels same value
-    let samples =
-      vec![0.5f32, 0.5f32, 0.5f32, 0.5f32, 0.5f32];
+    let samples = vec![0.5f32, 0.5f32, 0.5f32, 0.5f32, 0.5f32];
     let mono = to_mono(&samples, 5);
     assert_eq!(mono.len(), 1);
     assert!((mono[0] - 0.5).abs() < f32::EPSILON);
@@ -364,10 +350,7 @@ mod recording_state_tests {
   fn test_recording_state_initialization() {
     let state = RecordingState::new();
 
-    assert_eq!(
-      state.volume_level.load(Ordering::Relaxed),
-      0
-    );
+    assert_eq!(state.volume_level.load(Ordering::Relaxed), 0);
     assert!(!state.is_recording());
   }
 
@@ -408,18 +391,13 @@ mod recording_state_tests {
 
     // Update volume from background thread
     thread::spawn(move || {
-      state_clone
-        .volume_level
-        .store(750, Ordering::Relaxed);
+      state_clone.volume_level.store(750, Ordering::Relaxed);
     });
 
     thread::sleep(Duration::from_millis(50));
 
     // Main thread should see updated value
-    assert_eq!(
-      state.volume_level.load(Ordering::Relaxed),
-      750
-    );
+    assert_eq!(state.volume_level.load(Ordering::Relaxed), 750);
   }
 
   #[test]
@@ -466,8 +444,7 @@ mod private_function_tests {
     assert_eq!(output, 5);
 
     // Test that accumulator carries over correctly
-    let (output1, acc1) =
-      simulate_resampling(3, 1, 2.0, 0.0);
+    let (output1, acc1) = simulate_resampling(3, 1, 2.0, 0.0);
     assert_eq!(output1, 1);
     assert!((acc1 - 1.0).abs() < f64::EPSILON);
 
@@ -489,8 +466,7 @@ mod post_processing_tests {
   }
 
   #[test]
-  fn test_estimate_noise_floor_for_mostly_low_level_noise()
-  {
+  fn test_estimate_noise_floor_for_mostly_low_level_noise() {
     let mut samples = vec![0.002f32; 80];
     samples.extend(std::iter::repeat_n(0.2f32, 20));
 
@@ -499,17 +475,13 @@ mod post_processing_tests {
   }
 
   #[test]
-  fn test_remove_background_noise_attenuates_quiet_signal()
-  {
-    let mut samples =
-      vec![0.001f32, -0.0012, 0.0015, -0.0018];
-    let before_energy: f32 =
-      samples.iter().map(|s| s.abs()).sum();
+  fn test_remove_background_noise_attenuates_quiet_signal() {
+    let mut samples = vec![0.001f32, -0.0012, 0.0015, -0.0018];
+    let before_energy: f32 = samples.iter().map(|s| s.abs()).sum();
 
     remove_background_noise(&mut samples, 0.001);
 
-    let after_energy: f32 =
-      samples.iter().map(|s| s.abs()).sum();
+    let after_energy: f32 = samples.iter().map(|s| s.abs()).sum();
     assert!(after_energy < before_energy);
   }
 
@@ -518,8 +490,7 @@ mod post_processing_tests {
     let mut samples = vec![0.01f32; 512];
     let before = rms(&samples);
 
-    let gain =
-      normalize_target_rms(&mut samples, 0.1, 0.5, 10.0);
+    let gain = normalize_target_rms(&mut samples, 0.1, 0.5, 10.0);
     let after = rms(&samples);
 
     assert!(gain > 1.0);
@@ -551,28 +522,21 @@ mod post_processing_tests {
   }
 
   #[test]
-  fn test_tame_high_frequency_hiss_smooths_rapid_alternation()
-   {
-    let mut samples =
-      vec![0.3f32, -0.3, 0.3, -0.3, 0.3, -0.3, 0.3, -0.3];
+  fn test_tame_high_frequency_hiss_smooths_rapid_alternation() {
+    let mut samples = vec![0.3f32, -0.3, 0.3, -0.3, 0.3, -0.3, 0.3, -0.3];
     let before_diff: f32 =
       samples.windows(2).map(|w| (w[1] - w[0]).abs()).sum();
 
     tame_high_frequency_hiss(&mut samples, 0.25, 0.5);
 
-    let after_diff: f32 =
-      samples.windows(2).map(|w| (w[1] - w[0]).abs()).sum();
+    let after_diff: f32 = samples.windows(2).map(|w| (w[1] - w[0]).abs()).sum();
     assert!(after_diff < before_diff);
   }
 
   #[test]
-  fn test_recording_output_path_uses_run_audio_recording_wav()
-   {
+  fn test_recording_output_path_uses_run_audio_recording_wav() {
     let path = recording_output_path();
-    let normalized =
-      path.to_string_lossy().replace('\\', "/");
-    assert!(
-      normalized.ends_with("/run/audio/recording.wav")
-    );
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    assert!(normalized.ends_with("/run/audio/recording.wav"));
   }
 }

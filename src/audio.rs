@@ -34,17 +34,14 @@ fn calculate_rms(samples: &[f32]) -> f32 {
 }
 
 fn model_base_dir() -> std::path::PathBuf {
-  if let Ok(override_path) =
-    std::env::var("DICTATION_MODEL_BASE_DIR")
-  {
+  if let Ok(override_path) = std::env::var("DICTATION_MODEL_BASE_DIR") {
     return std::path::PathBuf::from(override_path);
   }
 
   ProjectDirs::from("com", "dictation", "dictation")
     .map(|dirs| dirs.data_dir().to_path_buf())
     .unwrap_or_else(|| {
-      std::env::current_dir()
-        .unwrap_or_else(|_| std::env::temp_dir())
+      std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir())
     })
 }
 
@@ -65,18 +62,14 @@ pub fn estimate_noise_floor(samples: &[f32]) -> f32 {
     return 0.0;
   }
 
-  let mut magnitudes: Vec<f32> =
-    samples.iter().map(|s| s.abs()).collect();
+  let mut magnitudes: Vec<f32> = samples.iter().map(|s| s.abs()).collect();
   magnitudes.sort_by(f32::total_cmp);
   let idx = ((magnitudes.len() as f32) * 0.2) as usize;
   magnitudes[idx.min(magnitudes.len() - 1)]
 }
 
 /// Reduce low-level background noise with soft attenuation below threshold.
-pub fn remove_background_noise(
-  samples: &mut [f32],
-  noise_floor: f32,
-) {
+pub fn remove_background_noise(samples: &mut [f32], noise_floor: f32) {
   if samples.is_empty() {
     return;
   }
@@ -92,8 +85,7 @@ pub fn remove_background_noise(
       } else {
         0.0
       };
-      let soft_scale =
-        min_attenuation + (1.0 - min_attenuation) * ratio;
+      let soft_scale = min_attenuation + (1.0 - min_attenuation) * ratio;
       *sample *= soft_scale;
     }
   }
@@ -101,11 +93,7 @@ pub fn remove_background_noise(
 
 /// Tame sharp high-frequency background hiss using a gentle low-pass blend.
 /// This preserves most voice energy while smoothing harsh high-frequency noise.
-pub fn tame_high_frequency_hiss(
-  samples: &mut [f32],
-  alpha: f32,
-  blend: f32,
-) {
+pub fn tame_high_frequency_hiss(samples: &mut [f32], alpha: f32, blend: f32) {
   if samples.is_empty() {
     return;
   }
@@ -151,8 +139,8 @@ pub fn limit_peaks(samples: &mut [f32], threshold: f32) {
     if amp > threshold {
       let sign = sample.signum();
       let excess = amp - threshold;
-      let compressed = threshold
-        + (excess / (1.0 + excess / (1.0 - threshold)));
+      let compressed =
+        threshold + (excess / (1.0 + excess / (1.0 - threshold)));
       *sample = sign * compressed.min(1.0);
     }
     *sample = sample.clamp(-1.0, 1.0);
@@ -168,20 +156,12 @@ pub fn process_audio_for_saving(samples: &mut [f32]) {
   let noise_floor = estimate_noise_floor(samples);
   remove_background_noise(samples, noise_floor);
   // Extra pass to reduce sharp hiss-like background noise.
-  tame_high_frequency_hiss(
-    samples,
-    HISS_SMOOTHING_ALPHA,
-    0.35,
-  );
-  normalize_target_rms(
-    samples, TARGET_RMS, MIN_GAIN, MAX_GAIN,
-  );
+  tame_high_frequency_hiss(samples, HISS_SMOOTHING_ALPHA, 0.35);
+  normalize_target_rms(samples, TARGET_RMS, MIN_GAIN, MAX_GAIN);
   limit_peaks(samples, PEAK_LIMIT);
 }
 
-fn post_process_and_save(
-  temp_path: &std::path::Path,
-) -> Result<(), String> {
+fn post_process_and_save(temp_path: &std::path::Path) -> Result<(), String> {
   let mut reader = WavReader::open(temp_path)
     .map_err(|e| format!("open temp wav failed: {e}"))?;
   let input_spec = reader.spec();
@@ -196,9 +176,8 @@ fn post_process_and_save(
 
   let output_path = recording_output_path();
   if let Some(parent) = output_path.parent() {
-    std::fs::create_dir_all(parent).map_err(|e| {
-      format!("create output dir failed: {e}")
-    })?;
+    std::fs::create_dir_all(parent)
+      .map_err(|e| format!("create output dir failed: {e}"))?;
   }
 
   let out_spec = WavSpec {
@@ -208,28 +187,22 @@ fn post_process_and_save(
     sample_format: hound::SampleFormat::Int,
   };
 
-  let mut writer =
-    WavWriter::create(&output_path, out_spec).map_err(
-      |e| format!("create output wav failed: {e}"),
-    )?;
+  let mut writer = WavWriter::create(&output_path, out_spec)
+    .map_err(|e| format!("create output wav failed: {e}"))?;
   for sample in samples {
-    writer.write_sample(sample_to_i16(sample)).map_err(
-      |e| format!("write output sample failed: {e}"),
-    )?;
+    writer
+      .write_sample(sample_to_i16(sample))
+      .map_err(|e| format!("write output sample failed: {e}"))?;
   }
-  writer.finalize().map_err(|e| {
-    format!("finalize output wav failed: {e}")
-  })?;
+  writer
+    .finalize()
+    .map_err(|e| format!("finalize output wav failed: {e}"))?;
 
   Ok(())
 }
 
 /// Mix multiple channels into a single mono sample by averaging
-fn mix_to_mono(
-  samples: &[f32],
-  channels: usize,
-  frame_idx: usize,
-) -> f32 {
+fn mix_to_mono(samples: &[f32], channels: usize, frame_idx: usize) -> f32 {
   let mut mono_sample: f32 = 0.0;
   for ch in 0..channels {
     mono_sample += samples[frame_idx * channels + ch];
@@ -275,17 +248,14 @@ impl RecordingState {
   }
 
   pub fn set_recording(&self, recording: bool) {
-    self.is_recording.store(
-      recording,
-      std::sync::atomic::Ordering::SeqCst,
-    );
+    self
+      .is_recording
+      .store(recording, std::sync::atomic::Ordering::SeqCst);
   }
 
   #[allow(dead_code)]
   pub fn is_recording(&self) -> bool {
-    self
-      .is_recording
-      .load(std::sync::atomic::Ordering::SeqCst)
+    self.is_recording.load(std::sync::atomic::Ordering::SeqCst)
   }
 
   /// Start a new recording session
@@ -308,14 +278,12 @@ impl RecordingState {
         Some(d) => d,
         None => {
           eprintln!("No default input device found");
-          state.is_recording.store(
-            false,
-            std::sync::atomic::Ordering::SeqCst,
-          );
-          state.mic_ready.store(
-            false,
-            std::sync::atomic::Ordering::SeqCst,
-          );
+          state
+            .is_recording
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+          state
+            .mic_ready
+            .store(false, std::sync::atomic::Ordering::SeqCst);
           return;
         }
       };
@@ -324,20 +292,17 @@ impl RecordingState {
         Ok(c) => c,
         Err(e) => {
           eprintln!("Failed to get input config: {}", e);
-          state.is_recording.store(
-            false,
-            std::sync::atomic::Ordering::SeqCst,
-          );
-          state.mic_ready.store(
-            false,
-            std::sync::atomic::Ordering::SeqCst,
-          );
+          state
+            .is_recording
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+          state
+            .mic_ready
+            .store(false, std::sync::atomic::Ordering::SeqCst);
           return;
         }
       };
 
-      let source_sample_rate =
-        config.sample_rate().0 as f64;
+      let source_sample_rate = config.sample_rate().0 as f64;
       let channels = config.channels() as usize;
 
       // Target: 16kHz, Mono, 16-bit PCM for Whisper compatibility
@@ -350,18 +315,15 @@ impl RecordingState {
       };
 
       // Create temp file path
-      let temp_path =
-        std::env::temp_dir().join("dictation_temp.wav");
+      let temp_path = std::env::temp_dir().join("dictation_temp.wav");
 
-      let writer = match WavWriter::create(&temp_path, spec)
-      {
+      let writer = match WavWriter::create(&temp_path, spec) {
         Ok(w) => w,
         Err(e) => {
           eprintln!("Failed to create WavWriter: {}", e);
-          state.is_recording.store(
-            false,
-            std::sync::atomic::Ordering::SeqCst,
-          );
+          state
+            .is_recording
+            .store(false, std::sync::atomic::Ordering::SeqCst);
           return;
         }
       };
@@ -369,18 +331,14 @@ impl RecordingState {
       let stream_config: cpal::StreamConfig = config.into();
 
       // Shared state between closure and main thread
-      let writer_arc =
-        Arc::new(std::sync::Mutex::new(Some(writer)));
+      let writer_arc = Arc::new(std::sync::Mutex::new(Some(writer)));
       let is_active = Arc::new(std::sync::Mutex::new(true));
 
       // Resampling state
-      let sample_drop_ratio =
-        source_sample_rate / target_sample_rate as f64;
-      let accumulator_arc =
-        Arc::new(std::sync::Mutex::new(0.0_f64));
+      let sample_drop_ratio = source_sample_rate / target_sample_rate as f64;
+      let accumulator_arc = Arc::new(std::sync::Mutex::new(0.0_f64));
 
-      let is_recording_callback =
-        state.is_recording.clone();
+      let is_recording_callback = state.is_recording.clone();
       let volume_level = state.volume_level.clone();
       let writer_cb = writer_arc.clone();
       let _is_active = is_active.clone();
@@ -402,14 +360,11 @@ impl RecordingState {
                 let num_frames = data.len() / channels;
 
                 for frame_idx in 0..num_frames {
-                  let mono_sample =
-                    mix_to_mono(data, channels, frame_idx);
+                  let mono_sample = mix_to_mono(data, channels, frame_idx);
 
-                  if let Some(sample) = resample_sample(
-                    mono_sample,
-                    &mut acc,
-                    sample_drop_ratio,
-                  ) {
+                  if let Some(sample) =
+                    resample_sample(mono_sample, &mut acc, sample_drop_ratio)
+                  {
                     let _ = writer.write_sample(sample);
                   }
                 }
@@ -425,28 +380,24 @@ impl RecordingState {
         Ok(s) => s,
         Err(e) => {
           eprintln!("Failed to build input stream: {}", e);
-          state.is_recording.store(
-            false,
-            std::sync::atomic::Ordering::SeqCst,
-          );
-          state.mic_ready.store(
-            false,
-            std::sync::atomic::Ordering::SeqCst,
-          );
+          state
+            .is_recording
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+          state
+            .mic_ready
+            .store(false, std::sync::atomic::Ordering::SeqCst);
           return;
         }
       };
 
       if let Err(e) = stream.play() {
         eprintln!("Failed to play stream: {}", e);
-        state.is_recording.store(
-          false,
-          std::sync::atomic::Ordering::SeqCst,
-        );
-        state.mic_ready.store(
-          false,
-          std::sync::atomic::Ordering::SeqCst,
-        );
+        state
+          .is_recording
+          .store(false, std::sync::atomic::Ordering::SeqCst);
+        state
+          .mic_ready
+          .store(false, std::sync::atomic::Ordering::SeqCst);
         return;
       }
 
@@ -455,12 +406,8 @@ impl RecordingState {
         .store(true, std::sync::atomic::Ordering::SeqCst);
 
       // Wait for recording to be stopped
-      while is_recording_callback
-        .load(std::sync::atomic::Ordering::SeqCst)
-      {
-        std::thread::sleep(
-          std::time::Duration::from_millis(50),
-        );
+      while is_recording_callback.load(std::sync::atomic::Ordering::SeqCst) {
+        std::thread::sleep(std::time::Duration::from_millis(50));
       }
 
       // Signal callback to stop
@@ -476,9 +423,7 @@ impl RecordingState {
 
       // Finalize the writer
       if let Ok(writer_opt) = Arc::try_unwrap(writer_arc) {
-        if let Some(writer) =
-          writer_opt.into_inner().ok().flatten()
-        {
+        if let Some(writer) = writer_opt.into_inner().ok().flatten() {
           let _ = writer.finalize();
         }
       }

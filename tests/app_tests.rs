@@ -48,12 +48,8 @@ impl VolumeHistory {
 
 /// Calculates the bar height for visualization
 /// Mirrors the logic in app.rs update method
-pub fn calculate_bar_height(
-  amplitude: f32,
-  max_height: f32,
-) -> f32 {
-  (amplitude * max_height * 4.0)
-    .clamp(2.0, max_height * 0.9)
+pub fn calculate_bar_height(amplitude: f32, max_height: f32) -> f32 {
+  (amplitude * max_height * 4.0).clamp(2.0, max_height * 0.9)
 }
 
 /// Calculates the x position for a bar in the visualization
@@ -217,9 +213,7 @@ mod visualization_tests {
     let num_bars = 8;
 
     let positions: Vec<f32> = (0..num_bars)
-      .map(|i| {
-        calculate_bar_x(i, num_bars, rect_width, rect_left)
-      })
+      .map(|i| calculate_bar_x(i, num_bars, rect_width, rect_left))
       .collect();
 
     // All positions should be within the rect
@@ -237,8 +231,7 @@ mod visualization_tests {
     let rect_left = 50.0;
     let num_bars = 4;
 
-    let pos =
-      calculate_bar_x(0, num_bars, rect_width, rect_left);
+    let pos = calculate_bar_x(0, num_bars, rect_width, rect_left);
     assert!((pos - 62.5).abs() < 0.01); // 50 + 100/8 = 62.5
   }
 }
@@ -257,8 +250,7 @@ mod atomic_integration_tests {
     assert_eq!(volume.load(Ordering::Relaxed), 500);
 
     // Convert to volume level
-    let level =
-      volume.load(Ordering::Relaxed) as f32 / 1000.0;
+    let level = volume.load(Ordering::Relaxed) as f32 / 1000.0;
     assert!((level - 0.5).abs() < f32::EPSILON);
   }
 
@@ -310,9 +302,8 @@ mod frame_calculation_tests {
   fn test_frame_duration_16khz() {
     let sample_rate = 16000u32;
     let samples_per_frame = 512;
-    let frame_duration_ms = (samples_per_frame as f64
-      / sample_rate as f64)
-      * 1000.0;
+    let frame_duration_ms =
+      (samples_per_frame as f64 / sample_rate as f64) * 1000.0;
 
     // 512 samples at 16kHz ≈ 32ms
     assert!((frame_duration_ms - 32.0).abs() < 0.1);
@@ -322,9 +313,8 @@ mod frame_calculation_tests {
   fn test_samples_for_duration() {
     let duration_ms = 1000u32;
     let sample_rate = 16000u32;
-    let expected_samples = (duration_ms as f64 / 1000.0
-      * sample_rate as f64)
-      as usize;
+    let expected_samples =
+      (duration_ms as f64 / 1000.0 * sample_rate as f64) as usize;
 
     assert_eq!(expected_samples, 16000);
   }

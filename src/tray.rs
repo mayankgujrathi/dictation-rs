@@ -42,8 +42,7 @@ pub fn create_tray_icon() -> Icon {
     }
   }
 
-  Icon::from_rgba(buffer, size, size)
-    .expect("Failed to create icon from rgba")
+  Icon::from_rgba(buffer, size, size).expect("Failed to create icon from rgba")
 }
 
 /// Tray manager that holds the tray icon and handles events
@@ -55,10 +54,8 @@ pub struct TrayManager {
 impl TrayManager {
   pub fn new(exit_requested: Arc<AtomicBool>) -> Self {
     let icon = create_tray_icon();
-    let exit_item =
-      MenuItem::with_id("exit", "Exit", true, None);
-    let about_item =
-      MenuItem::with_id("about", "About", true, None);
+    let exit_item = MenuItem::with_id("exit", "Exit", true, None);
+    let about_item = MenuItem::with_id("about", "About", true, None);
 
     let mut menu = Menu::new();
     menu.append(&exit_item).unwrap();
@@ -109,9 +106,7 @@ pub fn spawn_poll_thread(exit_requested: Arc<AtomicBool>) {
         }
       }
 
-      std::thread::sleep(std::time::Duration::from_millis(
-        100,
-      ));
+      std::thread::sleep(std::time::Duration::from_millis(100));
     }
   });
 }
