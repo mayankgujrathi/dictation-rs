@@ -12,10 +12,13 @@ use single_instance::SingleInstance;
 
 fn main() -> eframe::Result<()> {
   // Prevent launching multiple app instances.
-  let instance = SingleInstance::new("dictation-rs-single-instance")
-    .expect("Failed to create app instance lock");
+  let instance =
+    SingleInstance::new("dictation-rs-single-instance")
+      .expect("Failed to create app instance lock");
   if !instance.is_single() {
-    eprintln!("Dictation is already running. Exiting duplicate instance.");
+    eprintln!(
+      "Dictation is already running. Exiting duplicate instance."
+    );
     return Ok(());
   }
 
@@ -33,7 +36,8 @@ fn main() -> eframe::Result<()> {
   let should_exit = Arc::new(AtomicBool::new(false));
 
   // Set up tray icon on main thread
-  let _tray_manager = tray::TrayManager::new(should_exit.clone());
+  let _tray_manager =
+    tray::TrayManager::new(should_exit.clone());
 
   // Spawn background thread for tray event polling
   tray::spawn_poll_thread(should_exit.clone());
@@ -50,52 +54,66 @@ fn main() -> eframe::Result<()> {
   let recording_state_clone = recording_state.clone();
   let should_exit_clone = should_exit.clone();
 
-  let _keyboard_handle = runtime.spawn_blocking(move || {
-    let mut hotkey_was_pressed = false;
+  let _keyboard_handle =
+    runtime.spawn_blocking(move || {
+      let mut hotkey_was_pressed = false;
 
-    #[cfg(target_os = "macos")]
-    fn is_toggle_key(key: rdev::Key) -> bool {
-      matches!(key, rdev::Key::MetaLeft | rdev::Key::MetaRight)
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    fn is_toggle_key(key: rdev::Key) -> bool {
-      matches!(key, rdev::Key::ControlLeft | rdev::Key::ControlRight)
-    }
-
-    if let Err(e) = rdev::listen(move |event| {
-      // Check for tray exit
-      if should_exit_clone.load(Ordering::SeqCst) {
-        return;
+      #[cfg(target_os = "macos")]
+      fn is_toggle_key(key: rdev::Key) -> bool {
+        matches!(
+          key,
+          rdev::Key::MetaLeft | rdev::Key::MetaRight
+        )
       }
 
-      // Check for configured hotkey key press/release.
-      if let rdev::EventType::KeyPress(key) = event.event_type {
-        if is_toggle_key(key) && !hotkey_was_pressed {
-          hotkey_was_pressed = true;
-
-          if !app::is_model_ready() {
-            return;
-          }
-
-          // Toggle recording
-          if recording_state_clone.is_recording() {
-            // Stop recording
-            recording_state_clone.set_recording(false);
-          } else {
-            // Start recording
-            recording_state_clone.record();
-          }
-        }
-      } else if let rdev::EventType::KeyRelease(key) = event.event_type {
-        if is_toggle_key(key) {
-          hotkey_was_pressed = false;
-        }
+      #[cfg(not(target_os = "macos"))]
+      fn is_toggle_key(key: rdev::Key) -> bool {
+        matches!(
+          key,
+          rdev::Key::ControlLeft | rdev::Key::ControlRight
+        )
       }
-    }) {
-      eprintln!("Failed to start global keyboard listener: {:?}", e);
-    }
-  });
+
+      if let Err(e) = rdev::listen(move |event| {
+        // Check for tray exit
+        if should_exit_clone.load(Ordering::SeqCst) {
+          return;
+        }
+
+        // Check for configured hotkey key press/release.
+        if let rdev::EventType::KeyPress(key) =
+          event.event_type
+        {
+          if is_toggle_key(key) && !hotkey_was_pressed {
+            hotkey_was_pressed = true;
+
+            if !app::is_model_ready() {
+              return;
+            }
+
+            // Toggle recording
+            if recording_state_clone.is_recording() {
+              // Stop recording
+              recording_state_clone.set_recording(false);
+            } else {
+              // Start recording
+              recording_state_clone.record();
+            }
+          }
+        } else if let rdev::EventType::KeyRelease(key) =
+          event.event_type
+        {
+          if is_toggle_key(key) {
+            hotkey_was_pressed = false;
+          }
+        }
+      }) {
+        eprintln!(
+          "Failed to start global keyboard listener: {:?}",
+          e
+        );
+      }
+    });
 
   let options = eframe::NativeOptions {
     viewport: egui::ViewportBuilder::default()
@@ -128,7 +146,9 @@ fn main() -> eframe::Result<()> {
   );
 
   // Shutdown runtime with a timeout to ensure clean exit
-  runtime.shutdown_timeout(std::time::Duration::from_millis(500));
+  runtime.shutdown_timeout(
+    std::time::Duration::from_millis(500),
+  );
 
   result
 }

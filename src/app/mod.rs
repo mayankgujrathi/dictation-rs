@@ -15,7 +15,8 @@ pub use constants::{HISTORY_LEN, WINDOW_INNER_SIZE};
 pub use state::UIState;
 
 #[cfg(test)]
-pub(crate) static TEST_CWD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+pub(crate) static TEST_CWD_LOCK: std::sync::Mutex<()> =
+  std::sync::Mutex::new(());
 
 pub struct VoiceApp {
   pub(crate) volume_atomic: Arc<AtomicU32>,
@@ -99,8 +100,14 @@ mod tests {
     let _guard = TEST_CWD_LOCK
       .lock()
       .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let temp = tempdir().expect("temp dir should be created");
-    unsafe { std::env::set_var("DICTATION_MODEL_BASE_DIR", temp.path()) };
+    let temp =
+      tempdir().expect("temp dir should be created");
+    unsafe {
+      std::env::set_var(
+        "DICTATION_MODEL_BASE_DIR",
+        temp.path(),
+      )
+    };
 
     let app = VoiceApp::new(
       Arc::new(AtomicU32::new(0)),
@@ -110,7 +117,12 @@ mod tests {
     );
 
     assert_eq!(app.history.len(), HISTORY_LEN);
-    assert!(app.history.iter().all(|v| (*v - 0.0).abs() < f32::EPSILON));
+    assert!(
+      app
+        .history
+        .iter()
+        .all(|v| (*v - 0.0).abs() < f32::EPSILON)
+    );
     assert!(!app.positioned);
     assert!(!app.saw_recording_active);
     assert!(!app.download_spawned);
@@ -131,29 +143,43 @@ mod tests {
     assert_eq!(app.transcription_rendered_at, None);
     assert_eq!(app.ui_state, UIState::ModelDownloading);
 
-    unsafe { std::env::remove_var("DICTATION_MODEL_BASE_DIR") };
+    unsafe {
+      std::env::remove_var("DICTATION_MODEL_BASE_DIR")
+    };
   }
 
   #[test]
-  fn test_voice_app_new_uses_visualizer_when_model_flag_exists() {
+  fn test_voice_app_new_uses_visualizer_when_model_flag_exists()
+   {
     let _guard = TEST_CWD_LOCK
       .lock()
       .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let temp = tempdir().expect("temp dir should be created");
-    unsafe { std::env::set_var("DICTATION_MODEL_BASE_DIR", temp.path()) };
+    let temp =
+      tempdir().expect("temp dir should be created");
+    unsafe {
+      std::env::set_var(
+        "DICTATION_MODEL_BASE_DIR",
+        temp.path(),
+      )
+    };
 
     let model_dir = model_dir_path();
-    std::fs::create_dir_all(&model_dir).expect("should create model dir");
+    std::fs::create_dir_all(&model_dir)
+      .expect("should create model dir");
     for file in [
       "encoder-model.int8.onnx",
       "decoder_joint-model.int8.onnx",
       "nemo128.onnx",
       "vocab.txt",
     ] {
-      std::fs::write(model_dir.join(file), b"x").expect("should create model file");
+      std::fs::write(model_dir.join(file), b"x")
+        .expect("should create model file");
     }
-    std::fs::write(model_dir.join("download.success.flag"), b"downloaded")
-      .expect("should create model success flag");
+    std::fs::write(
+      model_dir.join("download.success.flag"),
+      b"downloaded",
+    )
+    .expect("should create model success flag");
 
     let app = VoiceApp::new(
       Arc::new(AtomicU32::new(0)),
@@ -164,6 +190,8 @@ mod tests {
 
     assert_eq!(app.ui_state, UIState::VisualizerRecording);
 
-    unsafe { std::env::remove_var("DICTATION_MODEL_BASE_DIR") };
+    unsafe {
+      std::env::remove_var("DICTATION_MODEL_BASE_DIR")
+    };
   }
 }
