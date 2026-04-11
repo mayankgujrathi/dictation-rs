@@ -1,3 +1,6 @@
+#[cfg(target_os = "macos")]
+use std::path::Path;
+use std::process::Command;
 use std::sync::{
   Arc, Mutex, OnceLock,
   atomic::{AtomicU32, Ordering},
@@ -34,6 +37,13 @@ const MODEL_IDLE_TTL_SECS: u64 = 10 * 60;
 struct CachedParakeetModel {
   model: ParakeetModel,
   last_used_at: Instant,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ActiveApplicationInfo {
+  window_title: String,
+  application_name: Option<String>,
+  application_description: Option<String>,
 }
 
 static MODEL_CACHE: OnceLock<Mutex<Option<CachedParakeetModel>>> =
@@ -196,11 +206,9 @@ fn transcribe_call() -> Result<(), ()> {
   entry.last_used_at = Instant::now();
   drop(cache_guard);
 
-  let active_window_title = get_active_window_title();
-  let final_transcript = post_process_transcript(
-    transcript_text.as_str(),
-    active_window_title.as_str(),
-  );
+  let active_app_info = get_active_application_info();
+  let final_transcript =
+    post_process_transcript(transcript_text.as_str(), &active_app_info);
 
   if let Err(e) = update_clipboard_if_changed(final_transcript.as_str()) {
     eprintln!("Failed updating clipboard: {e}");
@@ -222,13 +230,150 @@ fn get_active_window_title() -> String {
     .unwrap_or_default()
 }
 
+fn get_active_application_info() -> ActiveApplicationInfo {
+  let window_title = get_active_window_title();
+  let (application_name, application_description) =
+    identify_active_application(window_title.as_str());
+
+  ActiveApplicationInfo {
+    window_title,
+    application_name,
+    application_description,
+  }
+}
+
+fn identify_active_application(
+  active_window_title: &str,
+) -> (Option<String>, Option<String>) {
+  #[cfg(target_os = "windows")]
+  {
+    identify_active_application_windows(active_window_title)
+  }
+
+  #[cfg(target_os = "linux")]
+  {
+    identify_active_application_linux(active_window_title)
+  }
+
+  #[cfg(target_os = "macos")]
+  {
+    identify_active_application_macos(active_window_title)
+  }
+
+  #[cfg(not(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "macos"
+  )))]
+  {
+    let _ = active_window_title;
+    (None, None)
+  }
+}
+
+#[cfg(target_os = "windows")]
+fn identify_active_application_windows(
+  active_window_title: &str,
+) -> (Option<String>, Option<String>) {
+  if active_window_title.is_empty() {
+    return (None, None);
+  }
+
+  let escaped_title = active_window_title.replace('\'', "''");
+  let ps_script = format!(
+    "$p = Get-Process | Where-Object {{$_.MainWindowTitle -eq '{}' }} | Select-Object -First 1; if ($null -ne $p) {{ $desc = $p.MainModule.FileVersionInfo.FileDescription; Write-Output ($p.ProcessName + \"`t\" + $desc) }}",
+    escaped_title
+  );
+
+  let output = Command::new("powershell")
+    .args(["-NoProfile", "-Command", ps_script.as_str()])
+    .output();
+
+  parse_app_metadata_from_tsv_output(output)
+}
+
+#[cfg(target_os = "linux")]
+fn identify_active_application_linux(
+  active_window_title: &str,
+) -> (Option<String>, Option<String>) {
+  let _ = active_window_title;
+  let shell_cmd = "pid=$(xdotool getactivewindow getwindowpid 2>/dev/null) || exit 0; comm=$(ps -p \"$pid\" -o comm= 2>/dev/null); cmd=$(ps -p \"$pid\" -o args= 2>/dev/null); printf \"%s\\t%s\" \"$comm\" \"$cmd\"";
+
+  let output = Command::new("sh").args(["-c", shell_cmd]).output();
+  parse_app_metadata_from_tsv_output(output)
+}
+
+#[cfg(target_os = "macos")]
+fn identify_active_application_macos(
+  active_window_title: &str,
+) -> (Option<String>, Option<String>) {
+  let _ = active_window_title;
+  let script = r#"tell application \"System Events\"
+set frontApp to first application process whose frontmost is true
+set appName to name of frontApp
+set appPath to \"\"
+try
+  set appPath to POSIX path of (file of frontApp as alias)
+end try
+return appName & tab & appPath
+end tell"#;
+
+  let output = Command::new("osascript").args(["-e", script]).output();
+  let (name, path) = parse_app_metadata_from_tsv_output(output);
+  let description = path.and_then(|p| {
+    Path::new(&p)
+      .file_stem()
+      .and_then(|s| s.to_str())
+      .map(|s| s.to_owned())
+  });
+
+  (name, description)
+}
+
+fn parse_app_metadata_from_tsv_output(
+  output: std::io::Result<std::process::Output>,
+) -> (Option<String>, Option<String>) {
+  let Ok(output) = output else {
+    return (None, None);
+  };
+
+  if !output.status.success() {
+    return (None, None);
+  }
+
+  let text = String::from_utf8_lossy(&output.stdout);
+  let line = text
+    .lines()
+    .find(|l| !l.trim().is_empty())
+    .unwrap_or_default();
+  if line.is_empty() {
+    return (None, None);
+  }
+
+  let mut parts = line.splitn(2, '\t');
+  let app_name = parts
+    .next()
+    .map(str::trim)
+    .filter(|s| !s.is_empty())
+    .map(str::to_owned);
+  let app_description = parts
+    .next()
+    .map(str::trim)
+    .filter(|s| !s.is_empty())
+    .map(str::to_owned);
+
+  (app_name, app_description)
+}
+
 fn post_process_transcript(
   transcript_text: &str,
-  active_window_title: &str,
+  active_app_info: &ActiveApplicationInfo,
 ) -> String {
   println!(
-    "post_process_transcript::Active window: {:?}",
-    active_window_title
+    "post_process_transcript::Active window={:?} app_name={:?} app_description={:?}",
+    active_app_info.window_title,
+    active_app_info.application_name,
+    active_app_info.application_description
   );
   transcript_text.to_owned()
 }
@@ -524,8 +669,23 @@ mod tests {
 
   #[test]
   fn test_post_process_transcript_returns_input_text() {
-    let out = post_process_transcript("hello world", "Some Window");
+    let app_info = ActiveApplicationInfo {
+      window_title: "Some Window".to_owned(),
+      application_name: Some("Editor".to_owned()),
+      application_description: Some("Code Editor".to_owned()),
+    };
+    let out = post_process_transcript("hello world", &app_info);
     assert_eq!(out, "hello world");
+  }
+
+  #[test]
+  fn test_parse_app_metadata_from_tsv_output_handles_empty() {
+    let out = parse_app_metadata_from_tsv_output(Ok(std::process::Output {
+      status: std::process::ExitStatus::default(),
+      stdout: Vec::new(),
+      stderr: Vec::new(),
+    }));
+    assert_eq!(out, (None, None));
   }
 
   #[test]
