@@ -45,23 +45,28 @@ fn main() -> eframe::Result<()> {
   let mic_ready = recording_state.mic_ready.clone();
   let recording_ready = recording_state.recording_ready.clone();
 
-  // Set up global keyboard listener for modifier-key toggle
-  // Windows/Linux: Ctrl
-  // macOS: Command (Meta)
+  // Set up global keyboard listener for start/stop toggle:
+  // Windows/Linux: Ctrl + `
+  // macOS: Command (Meta) + `
   let recording_state_clone = recording_state.clone();
   let should_exit_clone = should_exit.clone();
 
   let _keyboard_handle = runtime.spawn_blocking(move || {
     let mut hotkey_was_pressed = false;
+    let mut modifier_pressed = false;
 
     #[cfg(target_os = "macos")]
-    fn is_toggle_key(key: rdev::Key) -> bool {
+    fn is_modifier_key(key: rdev::Key) -> bool {
       matches!(key, rdev::Key::MetaLeft | rdev::Key::MetaRight)
     }
 
     #[cfg(not(target_os = "macos"))]
-    fn is_toggle_key(key: rdev::Key) -> bool {
+    fn is_modifier_key(key: rdev::Key) -> bool {
       matches!(key, rdev::Key::ControlLeft | rdev::Key::ControlRight)
+    }
+
+    fn is_trigger_key(key: rdev::Key) -> bool {
+      matches!(key, rdev::Key::BackQuote)
     }
 
     if let Err(e) = rdev::listen(move |event| {
@@ -72,7 +77,12 @@ fn main() -> eframe::Result<()> {
 
       // Check for configured hotkey key press/release.
       if let rdev::EventType::KeyPress(key) = event.event_type {
-        if is_toggle_key(key) && !hotkey_was_pressed {
+        if is_modifier_key(key) {
+          modifier_pressed = true;
+          return;
+        }
+
+        if modifier_pressed && is_trigger_key(key) && !hotkey_was_pressed {
           hotkey_was_pressed = true;
 
           if !app::is_model_ready() {
@@ -89,7 +99,10 @@ fn main() -> eframe::Result<()> {
           }
         }
       } else if let rdev::EventType::KeyRelease(key) = event.event_type {
-        if is_toggle_key(key) {
+        if is_trigger_key(key) {
+          hotkey_was_pressed = false;
+        } else if is_modifier_key(key) {
+          modifier_pressed = false;
           hotkey_was_pressed = false;
         }
       }

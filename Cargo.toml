@@ -17,3 +17,6 @@ single-instance = "0.3"
 directories = "5"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 transcribe-rs = { version = "0.3", features = ["onnx", "ort-cuda", "ort-rocm", "ort-directml", "ort-coreml"]}
+arboard = "3"
+enigo = "0.2"
+active-win-pos-rs = "0.8"

@@ -5,7 +5,9 @@ use std::sync::{
 use std::time::{Duration, Instant};
 use std::{io::Read, io::Write};
 
+use arboard::Clipboard;
 use directories::ProjectDirs;
+use enigo::{Direction, Enigo, Key, Keyboard, Settings};
 use reqwest::blocking::Client;
 use reqwest::redirect::Policy;
 
@@ -189,8 +191,94 @@ fn transcribe_call() -> Result<(), ()> {
     eprintln!("Unable to transcribe: {:?}", result.err());
     return Err(());
   };
+
+  let transcript_text = result.text.clone();
   entry.last_used_at = Instant::now();
+  drop(cache_guard);
+
+  let active_window_title = get_active_window_title();
+  let final_transcript = post_process_transcript(
+    transcript_text.as_str(),
+    active_window_title.as_str(),
+  );
+
+  if let Err(e) = update_clipboard_if_changed(final_transcript.as_str()) {
+    eprintln!("Failed updating clipboard: {e}");
+  }
+  if let Err(e) = paste_from_clipboard_into_active_input_field() {
+    eprintln!("Failed pasting transcript into active input field: {e}");
+  } else {
+    println!("Paste shortcut dispatched to active window");
+  }
+
   println!("Transcription: {:?}", result);
+  Ok(())
+}
+
+fn get_active_window_title() -> String {
+  active_win_pos_rs::get_active_window()
+    .ok()
+    .map(|w| w.title)
+    .unwrap_or_default()
+}
+
+fn post_process_transcript(
+  transcript_text: &str,
+  active_window_title: &str,
+) -> String {
+  println!(
+    "post_process_transcript::Active window: {:?}",
+    active_window_title
+  );
+  transcript_text.to_owned()
+}
+
+fn paste_from_clipboard_into_active_input_field() -> Result<(), String> {
+  let mut enigo = Enigo::new(&Settings::default())
+    .map_err(|e| format!("enigo init failed: {e}"))?;
+
+  #[cfg(target_os = "macos")]
+  {
+    enigo
+      .key(Key::Meta, Direction::Press)
+      .map_err(|e| format!("meta press failed: {e}"))?;
+    enigo
+      .key(Key::Unicode('v'), Direction::Click)
+      .map_err(|e| format!("v click failed: {e}"))?;
+    enigo
+      .key(Key::Meta, Direction::Release)
+      .map_err(|e| format!("meta release failed: {e}"))?;
+  }
+
+  #[cfg(not(target_os = "macos"))]
+  {
+    enigo
+      .key(Key::Control, Direction::Press)
+      .map_err(|e| format!("control press failed: {e}"))?;
+    enigo
+      .key(Key::Unicode('v'), Direction::Click)
+      .map_err(|e| format!("v click failed: {e}"))?;
+    enigo
+      .key(Key::Control, Direction::Release)
+      .map_err(|e| format!("control release failed: {e}"))?;
+  }
+
+  Ok(())
+}
+
+fn should_update_clipboard(current: Option<&str>, next: &str) -> bool {
+  current != Some(next)
+}
+
+fn update_clipboard_if_changed(text: &str) -> Result<(), String> {
+  let mut clipboard =
+    Clipboard::new().map_err(|e| format!("clipboard init failed: {e}"))?;
+  let current_text = clipboard.get_text().ok();
+  if should_update_clipboard(current_text.as_deref(), text) {
+    clipboard
+      .set_text(text.to_owned())
+      .map_err(|e| format!("set clipboard failed: {e}"))?;
+  }
   Ok(())
 }
 
@@ -432,5 +520,18 @@ mod tests {
     assert!(!is_model_downloaded());
 
     unsafe { std::env::remove_var("DICTATION_MODEL_BASE_DIR") };
+  }
+
+  #[test]
+  fn test_post_process_transcript_returns_input_text() {
+    let out = post_process_transcript("hello world", "Some Window");
+    assert_eq!(out, "hello world");
+  }
+
+  #[test]
+  fn test_should_update_clipboard_when_different() {
+    assert!(should_update_clipboard(Some("a"), "b"));
+    assert!(should_update_clipboard(None, "b"));
+    assert!(!should_update_clipboard(Some("b"), "b"));
   }
 }
