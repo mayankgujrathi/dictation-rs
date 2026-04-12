@@ -15,9 +15,6 @@ mod icon_tests {
     // This verifies that icon creation doesn't panic
     // (Icon struct methods are private, so we just verify it can be created)
     let _icon = create_tray_icon();
-
-    // If we got here without panicking, icon was created successfully
-    assert!(true);
   }
 }
 
@@ -41,23 +38,17 @@ mod tray_manager_tests {
   }
 
   #[test]
-  fn test_poll_events_no_exit() {
+  fn test_exit_flag_state_unchanged_after_manager_init() {
     let exit_flag = Arc::new(AtomicBool::new(false));
-    let manager = TrayManager::new(exit_flag.clone());
-
-    // Polling should not set exit flag when no events
-    manager.poll_events();
+    let _manager = TrayManager::new(exit_flag.clone());
 
     assert!(!exit_flag.load(Ordering::SeqCst));
   }
 
   #[test]
-  fn test_poll_events_already_exiting() {
+  fn test_preexisting_exit_flag_remains_true_after_manager_init() {
     let exit_flag = Arc::new(AtomicBool::new(true));
-    let manager = TrayManager::new(exit_flag.clone());
-
-    // Polling should return early when already exiting
-    manager.poll_events();
+    let _manager = TrayManager::new(exit_flag.clone());
 
     assert!(exit_flag.load(Ordering::SeqCst));
   }
@@ -74,7 +65,7 @@ mod poll_thread_tests {
     let exit_clone = exit_flag.clone();
 
     // Start poll thread
-    let _handle = spawn_poll_thread(exit_flag.clone());
+    spawn_poll_thread(exit_flag.clone());
 
     // Signal exit
     exit_clone.store(true, Ordering::SeqCst);

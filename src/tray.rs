@@ -47,17 +47,16 @@ pub fn create_tray_icon() -> Icon {
 
 /// Tray manager that holds the tray icon and handles events
 pub struct TrayManager {
-  exit_requested: Arc<AtomicBool>,
   _tray_icon: Option<TrayIcon>,
 }
 
 impl TrayManager {
-  pub fn new(exit_requested: Arc<AtomicBool>) -> Self {
+  pub fn new(_exit_requested: Arc<AtomicBool>) -> Self {
     let icon = create_tray_icon();
     let exit_item = MenuItem::with_id("exit", "Exit", true, None);
     let about_item = MenuItem::with_id("about", "About", true, None);
 
-    let mut menu = Menu::new();
+    let menu = Menu::new();
     menu.append(&exit_item).unwrap();
     menu.append(&PredefinedMenuItem::separator()).unwrap();
     menu.append(&about_item).unwrap();
@@ -70,22 +69,7 @@ impl TrayManager {
       .expect("Failed to create tray icon");
 
     Self {
-      exit_requested,
       _tray_icon: Some(tray_icon),
-    }
-  }
-
-  /// Poll for tray events. Call this periodically from the main loop.
-  pub fn poll_events(&self) {
-    if self.exit_requested.load(Ordering::SeqCst) {
-      return;
-    }
-
-    let menu_receiver = MenuEvent::receiver();
-    if let Ok(event) = menu_receiver.try_recv() {
-      if event.id.as_ref() == "exit" {
-        self.exit_requested.store(true, Ordering::SeqCst);
-      }
     }
   }
 }
@@ -99,11 +83,11 @@ pub fn spawn_poll_thread(exit_requested: Arc<AtomicBool>) {
       }
 
       let menu_receiver = MenuEvent::receiver();
-      if let Ok(event) = menu_receiver.try_recv() {
-        if event.id.as_ref() == "exit" {
-          exit_requested.store(true, Ordering::SeqCst);
-          break;
-        }
+      if let Ok(event) = menu_receiver.try_recv()
+        && event.id.as_ref() == "exit"
+      {
+        exit_requested.store(true, Ordering::SeqCst);
+        break;
       }
 
       std::thread::sleep(std::time::Duration::from_millis(100));

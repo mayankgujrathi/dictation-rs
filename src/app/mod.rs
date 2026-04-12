@@ -68,7 +68,7 @@ impl VoiceApp {
   }
 }
 
-pub(crate) fn is_model_ready() -> bool {
+pub fn is_model_ready() -> bool {
   workers::is_model_downloaded()
 }
 

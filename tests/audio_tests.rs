@@ -255,7 +255,7 @@ mod resampling_tests {
     let ratio = source_rate / target_rate;
     let (output, _) = simulate_resampling(44100, 1, ratio, 0.0);
     // Should be approximately 16000 samples
-    assert!(output >= 15900 && output <= 16100);
+    assert!((15900..=16100).contains(&output));
   }
 
   #[test]
@@ -474,7 +474,7 @@ mod post_processing_tests {
     samples.extend(std::iter::repeat_n(0.2f32, 20));
 
     let floor = estimate_noise_floor(&samples);
-    assert!(floor >= 0.001 && floor <= 0.01);
+    assert!((0.001..=0.01).contains(&floor));
   }
 
   #[test]

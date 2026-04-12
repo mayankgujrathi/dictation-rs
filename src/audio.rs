@@ -360,20 +360,19 @@ impl RecordingState {
           );
 
           // Only write to WAV if still recording
-          if let Ok(mut writer_opt) = writer_cb.lock() {
-            if let Some(writer) = writer_opt.as_mut() {
-              if let Ok(mut acc) = acc_cb.lock() {
-                let num_frames = data.len() / channels;
+          if let Ok(mut writer_opt) = writer_cb.lock()
+            && let Some(writer) = writer_opt.as_mut()
+            && let Ok(mut acc) = acc_cb.lock()
+          {
+            let num_frames = data.len() / channels;
 
-                for frame_idx in 0..num_frames {
-                  let mono_sample = mix_to_mono(data, channels, frame_idx);
+            for frame_idx in 0..num_frames {
+              let mono_sample = mix_to_mono(data, channels, frame_idx);
 
-                  if let Some(sample) =
-                    resample_sample(mono_sample, &mut acc, sample_drop_ratio)
-                  {
-                    let _ = writer.write_sample(sample);
-                  }
-                }
+              if let Some(sample) =
+                resample_sample(mono_sample, &mut acc, sample_drop_ratio)
+              {
+                let _ = writer.write_sample(sample);
               }
             }
           }
@@ -428,10 +427,10 @@ impl RecordingState {
         .store(false, std::sync::atomic::Ordering::SeqCst);
 
       // Finalize the writer
-      if let Ok(writer_opt) = Arc::try_unwrap(writer_arc) {
-        if let Some(writer) = writer_opt.into_inner().ok().flatten() {
-          let _ = writer.finalize();
-        }
+      if let Ok(writer_opt) = Arc::try_unwrap(writer_arc)
+        && let Some(writer) = writer_opt.into_inner().ok().flatten()
+      {
+        let _ = writer.finalize();
       }
 
       // Post-process and save output to run/audio/recording.wav under model-base path
@@ -448,6 +447,12 @@ impl RecordingState {
         .recording_ready
         .store(true, std::sync::atomic::Ordering::SeqCst);
     });
+  }
+}
+
+impl Default for RecordingState {
+  fn default() -> Self {
+    Self::new()
   }
 }
 

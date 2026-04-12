@@ -15,7 +15,6 @@ use reqwest::blocking::Client;
 use reqwest::redirect::Policy;
 
 use crate::audio::recording_output_path;
-use std::path::PathBuf;
 use transcribe_rs::onnx::Quantization;
 use transcribe_rs::onnx::parakeet::{
   ParakeetModel, ParakeetParams, TimestampGranularity,
@@ -165,10 +164,8 @@ fn transcribe_call() -> Result<(), ()> {
     // Drop expired/missing model and load a fresh one.
     *cache_guard = None;
 
-    let load_result = ParakeetModel::load(
-      &PathBuf::from(model_dir_path()),
-      &Quantization::Int8,
-    );
+    let load_result =
+      ParakeetModel::load(&model_dir_path(), &Quantization::Int8);
     let Ok(model) = load_result else {
       eprintln!("Unable to load model: {:?}", load_result.err());
       return Err(());
