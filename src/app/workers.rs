@@ -13,6 +13,7 @@ use directories::ProjectDirs;
 use enigo::{Direction, Enigo, Key, Keyboard, Settings};
 use reqwest::blocking::Client;
 use reqwest::redirect::Policy;
+use tracing::{debug, error, info, warn};
 
 use crate::audio::recording_output_path;
 use transcribe_rs::onnx::Quantization;
@@ -69,10 +70,6 @@ fn is_cache_entry_expired(
 }
 
 fn model_base_dir() -> std::path::PathBuf {
-  if let Ok(override_path) = std::env::var("DICTATION_MODEL_BASE_DIR") {
-    return std::path::PathBuf::from(override_path);
-  }
-
   ProjectDirs::from("com", "dictation", "dictation")
     .map(|dirs| dirs.data_dir().to_path_buf())
     .unwrap_or_else(|| {
@@ -145,6 +142,7 @@ pub(crate) fn is_model_downloaded() -> bool {
 }
 
 fn transcribe_call() -> Result<(), ()> {
+  info!("transcription worker started");
   set_ort_accelerator(OrtAccelerator::Auto);
   let cache = model_cache();
   let mut cache_guard = match cache.lock() {
@@ -161,13 +159,14 @@ fn transcribe_call() -> Result<(), ()> {
   };
 
   if should_reload {
+    debug!("loading transcription model into cache");
     // Drop expired/missing model and load a fresh one.
     *cache_guard = None;
 
     let load_result =
       ParakeetModel::load(&model_dir_path(), &Quantization::Int8);
     let Ok(model) = load_result else {
-      eprintln!("Unable to load model: {:?}", load_result.err());
+      error!(error = ?load_result.err(), "unable to load model");
       return Err(());
     };
 
@@ -178,13 +177,13 @@ fn transcribe_call() -> Result<(), ()> {
   }
 
   let Some(entry) = cache_guard.as_mut() else {
-    eprintln!("Model cache unexpectedly empty after load/check");
+    error!("model cache unexpectedly empty after load/check");
     return Err(());
   };
   let samples =
     transcribe_rs::audio::read_wav_samples(&recording_output_path());
   let Ok(samples) = samples else {
-    eprintln!("Unable to load recording file: {:?}", samples.err());
+    error!(error = ?samples.err(), "unable to load recording file");
     return Err(());
   };
   let result = entry.model.transcribe_with(
@@ -195,7 +194,7 @@ fn transcribe_call() -> Result<(), ()> {
     },
   );
   let Ok(result) = result else {
-    eprintln!("Unable to transcribe: {:?}", result.err());
+    error!(error = ?result.err(), "unable to transcribe recording");
     return Err(());
   };
 
@@ -208,15 +207,15 @@ fn transcribe_call() -> Result<(), ()> {
     post_process_transcript(transcript_text.as_str(), &active_app_info);
 
   if let Err(e) = update_clipboard_if_changed(final_transcript.as_str()) {
-    eprintln!("Failed updating clipboard: {e}");
+    warn!(error = %e, "failed updating clipboard");
   }
   if let Err(e) = paste_from_clipboard_into_active_input_field() {
-    eprintln!("Failed pasting transcript into active input field: {e}");
+    warn!(error = %e, "failed pasting transcript into active input field");
   } else {
-    println!("Paste shortcut dispatched to active window");
+    info!("paste shortcut dispatched to active window");
   }
 
-  println!("Transcription: {:?}", result);
+  info!(text = %result.text, "transcription completed");
   Ok(())
 }
 
@@ -366,11 +365,11 @@ fn post_process_transcript(
   transcript_text: &str,
   active_app_info: &ActiveApplicationInfo,
 ) -> String {
-  println!(
-    "post_process_transcript::Active window={:?} app_name={:?} app_description={:?}",
-    active_app_info.window_title,
-    active_app_info.application_name,
-    active_app_info.application_description
+  debug!(
+    window_title = %active_app_info.window_title,
+    app_name = ?active_app_info.application_name,
+    app_description = ?active_app_info.application_description,
+    "post processing transcript for active app context"
   );
   transcript_text.to_owned()
 }
@@ -425,10 +424,12 @@ fn update_clipboard_if_changed(text: &str) -> Result<(), String> {
 }
 
 fn run_model_download(progress: Arc<AtomicU32>) {
+  info!("model download started");
   progress.store(0, Ordering::Relaxed);
 
   let model_dir = model_dir_path();
   if std::fs::create_dir_all(&model_dir).is_err() {
+    error!(model_dir = %model_dir.display(), "failed to create model dir");
     return;
   }
 
@@ -454,7 +455,7 @@ fn run_model_download(progress: Arc<AtomicU32>) {
   {
     Ok(client) => client,
     Err(e) => {
-      eprintln!("Failed to create HTTP client: {e}");
+      error!(error = %e, "failed to create http client");
       return;
     }
   };
@@ -482,11 +483,11 @@ fn run_model_download(progress: Arc<AtomicU32>) {
     let mut response = match client.get(url).send() {
       Ok(resp) if resp.status().is_success() => resp,
       Ok(resp) => {
-        eprintln!("Download failed for {filename}: HTTP {}", resp.status());
+        error!(filename, status = %resp.status(), "download failed");
         return;
       }
       Err(e) => {
-        eprintln!("Download request failed for {filename}: {e}");
+        error!(filename, error = %e, "download request failed");
         return;
       }
     };
@@ -507,13 +508,13 @@ fn run_model_download(progress: Arc<AtomicU32>) {
         Ok(0) => break,
         Ok(n) => n,
         Err(e) => {
-          eprintln!("Download stream read failed for {filename}: {e}");
+          error!(filename, error = %e, "download stream read failed");
           return;
         }
       };
 
       if file.write_all(&buffer[..read]).is_err() {
-        eprintln!("Writing file failed for {filename}");
+        error!(filename, "writing downloaded file failed");
         return;
       }
 
@@ -528,9 +529,11 @@ fn run_model_download(progress: Arc<AtomicU32>) {
 
   progress.store(100, Ordering::Relaxed);
   let _ = std::fs::write(model_success_flag_path(), b"downloaded");
+  info!("model download completed");
 }
 
 fn run_transcription(status_slot: Arc<Mutex<Option<bool>>>) {
+  debug!("run_transcription invoked");
   let is_error = transcribe_call().is_err();
   if let Ok(mut slot) = status_slot.lock() {
     *slot = Some(is_error);
@@ -540,6 +543,7 @@ fn run_transcription(status_slot: Arc<Mutex<Option<bool>>>) {
 impl VoiceApp {
   pub(crate) fn spawn_model_download_worker_if_needed(&mut self) {
     if self.download_spawned {
+      debug!("model download worker already spawned");
       return;
     }
 
@@ -550,6 +554,7 @@ impl VoiceApp {
 
   pub(crate) fn spawn_transcription_worker_if_needed(&mut self) {
     if self.transcription_spawned {
+      debug!("transcription worker already spawned");
       return;
     }
 
@@ -563,7 +568,6 @@ impl VoiceApp {
 mod tests {
   use super::*;
   use crate::app::TEST_CWD_LOCK;
-  use tempfile::tempdir;
 
   #[test]
   fn test_cache_entry_expiry_logic() {
@@ -590,10 +594,10 @@ mod tests {
       Ok(g) => g,
       Err(e) => e.into_inner(),
     };
-    let temp = tempdir().expect("temp dir should be created");
-    unsafe { std::env::set_var("DICTATION_MODEL_BASE_DIR", temp.path()) };
-
     let model_dir = model_dir_path();
+    let _ = std::fs::remove_dir_all(
+      model_dir.parent().unwrap_or(model_dir.as_path()),
+    );
     std::fs::create_dir_all(&model_dir).expect("should create model dir");
     for file in MODEL_FILES {
       std::fs::write(model_dir.join(file), b"x")
@@ -602,7 +606,9 @@ mod tests {
 
     assert!(!is_model_downloaded());
 
-    unsafe { std::env::remove_var("DICTATION_MODEL_BASE_DIR") };
+    let _ = std::fs::remove_dir_all(
+      model_dir.parent().unwrap_or(model_dir.as_path()),
+    );
   }
 
   #[test]
@@ -611,10 +617,10 @@ mod tests {
       Ok(g) => g,
       Err(e) => e.into_inner(),
     };
-    let temp = tempdir().expect("temp dir should be created");
-    unsafe { std::env::set_var("DICTATION_MODEL_BASE_DIR", temp.path()) };
-
     let model_dir = model_dir_path();
+    let _ = std::fs::remove_dir_all(
+      model_dir.parent().unwrap_or(model_dir.as_path()),
+    );
     std::fs::create_dir_all(&model_dir).expect("should create model dir");
     for file in MODEL_FILES {
       if file.ends_with(".onnx") {
@@ -630,7 +636,9 @@ mod tests {
 
     assert!(is_model_downloaded());
 
-    unsafe { std::env::remove_var("DICTATION_MODEL_BASE_DIR") };
+    let _ = std::fs::remove_dir_all(
+      model_dir.parent().unwrap_or(model_dir.as_path()),
+    );
   }
 
   #[test]
@@ -639,10 +647,10 @@ mod tests {
       Ok(g) => g,
       Err(e) => e.into_inner(),
     };
-    let temp = tempdir().expect("temp dir should be created");
-    unsafe { std::env::set_var("DICTATION_MODEL_BASE_DIR", temp.path()) };
-
     let model_dir = model_dir_path();
+    let _ = std::fs::remove_dir_all(
+      model_dir.parent().unwrap_or(model_dir.as_path()),
+    );
     std::fs::create_dir_all(&model_dir).expect("should create model dir");
     for file in MODEL_FILES {
       if file == "encoder-model.int8.onnx" {
@@ -661,7 +669,9 @@ mod tests {
 
     assert!(!is_model_downloaded());
 
-    unsafe { std::env::remove_var("DICTATION_MODEL_BASE_DIR") };
+    let _ = std::fs::remove_dir_all(
+      model_dir.parent().unwrap_or(model_dir.as_path()),
+    );
   }
 
   #[test]

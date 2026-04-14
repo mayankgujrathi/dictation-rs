@@ -1,7 +1,9 @@
 mod app;
 mod audio;
+mod logging;
 mod tray;
 
+use std::io::Write;
 use std::sync::{
   Arc,
   atomic::{AtomicBool, Ordering},
@@ -9,13 +11,21 @@ use std::sync::{
 
 use eframe::egui;
 use single_instance::SingleInstance;
+use tracing::{debug, error, info, warn};
 
 fn main() -> eframe::Result<()> {
+  if let Err(e) = logging::init_logging() {
+    // Fallback path before logger is available.
+    let _ = std::io::stderr()
+      .write_all(format!("Failed to initialize logging: {e}\n").as_bytes());
+  }
+  info!("application startup initiated");
+
   // Prevent launching multiple app instances.
   let instance = SingleInstance::new("dictation-rs-single-instance")
     .expect("Failed to create app instance lock");
   if !instance.is_single() {
-    eprintln!("Dictation is already running. Exiting duplicate instance.");
+    warn!("dictation is already running; exiting duplicate instance");
     return Ok(());
   }
 
@@ -26,6 +36,7 @@ fn main() -> eframe::Result<()> {
     .max_blocking_threads(4)
     .build()
     .expect("Failed to build Tokio runtime");
+  info!("tokio runtime initialized");
 
   let _guard = runtime.enter();
 
@@ -34,9 +45,11 @@ fn main() -> eframe::Result<()> {
 
   // Set up tray icon on main thread
   let _tray_manager = tray::TrayManager::new(should_exit.clone());
+  info!("tray initialized");
 
   // Spawn background thread for tray event polling
   tray::spawn_poll_thread(should_exit.clone());
+  debug!("tray polling thread spawned");
 
   // Recording state
   let recording_state = audio::RecordingState::new();
@@ -52,6 +65,7 @@ fn main() -> eframe::Result<()> {
   let should_exit_clone = should_exit.clone();
 
   let _keyboard_handle = runtime.spawn_blocking(move || {
+    debug!("global keyboard listener thread started");
     let mut hotkey_was_pressed = false;
     let mut modifier_pressed = false;
 
@@ -84,8 +98,10 @@ fn main() -> eframe::Result<()> {
 
         if modifier_pressed && is_trigger_key(key) && !hotkey_was_pressed {
           hotkey_was_pressed = true;
+          info!("recording hotkey trigger received");
 
           if !app::is_model_ready() {
+            warn!("hotkey ignored because speech model is not ready");
             return;
           }
 
@@ -107,7 +123,7 @@ fn main() -> eframe::Result<()> {
         }
       }
     }) {
-      eprintln!("Failed to start global keyboard listener: {:?}", e);
+      error!(error = ?e, "failed to start global keyboard listener");
     }
   });
 
@@ -144,6 +160,8 @@ fn main() -> eframe::Result<()> {
 
   // Shutdown runtime with a timeout to ensure clean exit
   runtime.shutdown_timeout(std::time::Duration::from_millis(500));
+  info!("runtime shutdown completed");
+  logging::enforce_app_log_retention();
 
   result
 }

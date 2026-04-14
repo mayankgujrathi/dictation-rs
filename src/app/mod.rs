@@ -4,6 +4,7 @@ use std::sync::{
   atomic::{AtomicBool, AtomicU32},
 };
 use std::time::Instant;
+use tracing::info;
 
 mod constants;
 mod positioning;
@@ -48,6 +49,7 @@ impl VoiceApp {
     } else {
       UIState::ModelDownloading
     };
+    info!(state = ?initial_state, "voice app initialized");
 
     Self {
       volume_atomic,
@@ -69,7 +71,11 @@ impl VoiceApp {
 }
 
 pub fn is_model_ready() -> bool {
-  workers::is_model_downloaded()
+  let ready = workers::is_model_downloaded();
+  if !ready {
+    tracing::debug!("model is not ready yet");
+  }
+  ready
 }
 
 #[cfg(test)]
@@ -80,7 +86,6 @@ mod tests {
     Arc,
     atomic::{AtomicBool, AtomicU32},
   };
-  use tempfile::tempdir;
 
   fn model_dir_path() -> std::path::PathBuf {
     if let Ok(override_path) = std::env::var("DICTATION_MODEL_BASE_DIR") {
@@ -109,8 +114,10 @@ mod tests {
     let _guard = TEST_CWD_LOCK
       .lock()
       .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let temp = tempdir().expect("temp dir should be created");
-    unsafe { std::env::set_var("DICTATION_MODEL_BASE_DIR", temp.path()) };
+    let model_dir = model_dir_path();
+    let _ = std::fs::remove_dir_all(
+      model_dir.parent().unwrap_or(model_dir.as_path()),
+    );
 
     let app = VoiceApp::new(
       Arc::new(AtomicU32::new(0)),
@@ -141,8 +148,6 @@ mod tests {
     );
     assert_eq!(app.transcription_rendered_at, None);
     assert_eq!(app.ui_state, UIState::ModelDownloading);
-
-    unsafe { std::env::remove_var("DICTATION_MODEL_BASE_DIR") };
   }
 
   #[test]
@@ -150,9 +155,6 @@ mod tests {
     let _guard = TEST_CWD_LOCK
       .lock()
       .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let temp = tempdir().expect("temp dir should be created");
-    unsafe { std::env::set_var("DICTATION_MODEL_BASE_DIR", temp.path()) };
-
     let model_dir = model_dir_path();
     std::fs::create_dir_all(&model_dir).expect("should create model dir");
     for file in [
@@ -182,6 +184,8 @@ mod tests {
 
     assert_eq!(app.ui_state, UIState::VisualizerRecording);
 
-    unsafe { std::env::remove_var("DICTATION_MODEL_BASE_DIR") };
+    let _ = std::fs::remove_dir_all(
+      model_dir.parent().unwrap_or(model_dir.as_path()),
+    );
   }
 }

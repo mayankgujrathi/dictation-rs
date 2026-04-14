@@ -1,4 +1,5 @@
 use eframe::egui;
+use tracing::debug;
 
 use super::{VoiceApp, WINDOW_INNER_SIZE};
 
@@ -12,6 +13,7 @@ impl VoiceApp {
       let window_size = egui::vec2(WINDOW_INNER_SIZE[0], WINDOW_INNER_SIZE[1]);
       let x = (monitor_res.x - window_size.x) / 2.0;
       let y = (monitor_res.y * 0.9) - window_size.y;
+      debug!(x, y, "positioning viewport on screen");
       ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
         x, y,
       )));

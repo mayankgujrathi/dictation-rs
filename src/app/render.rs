@@ -2,6 +2,7 @@ use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
 use eframe::egui;
+use tracing::{debug, info, warn};
 
 use super::{HISTORY_LEN, UIState, VoiceApp, WINDOW_INNER_SIZE};
 
@@ -14,6 +15,7 @@ impl VoiceApp {
       1.0, 1.0,
     )));
     ctx.request_repaint_after(Duration::from_millis(150));
+    debug!("entered idle mode");
   }
 
   fn reset_transcription_cycle(&mut self) {
@@ -23,6 +25,7 @@ impl VoiceApp {
     if let Ok(mut slot) = self.transcription_status.lock() {
       *slot = None;
     }
+    debug!("transcription cycle reset");
   }
 
   fn update_model_downloading(
@@ -74,6 +77,7 @@ impl VoiceApp {
       });
 
     if progress >= 1.0 {
+      info!("model download reached 100%; switching to recording visualizer");
       self.ui_state = UIState::VisualizerRecording;
     }
 
@@ -103,6 +107,7 @@ impl VoiceApp {
     if !actively_recording {
       if self.saw_recording_active {
         if recording_ready {
+          info!("recording finalized; switching to transcription state");
           self.ui_state = UIState::Transcribing;
           ctx.request_repaint();
         } else {
@@ -192,12 +197,16 @@ impl VoiceApp {
 
     match status_opt {
       Some(false) => {
+        info!(
+          "transcription completed successfully; returning to recording state"
+        );
         self.reset_transcription_cycle();
         self.ui_state = UIState::VisualizerRecording;
         self.enter_idle_mode(ctx);
         return;
       }
       Some(true) => {
+        warn!("transcription reported an error");
         if self.transcription_rendered_at.is_none() {
           self.transcription_rendered_at = Some(Instant::now());
         } else if self
@@ -225,6 +234,7 @@ impl eframe::App for VoiceApp {
 
   fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
     if self.should_exit.load(Ordering::SeqCst) {
+      info!("app exit requested; closing viewport");
       ctx.send_viewport_cmd(egui::ViewportCommand::Close);
       return;
     }

@@ -42,6 +42,33 @@ The binary will be created at `target/release/dictation.exe`.
 
 5. The transcribed text is copied to your clipboard and typed into the currently focused text field.
 
+## Logging & Tracing
+
+- Base path (per OS):
+  - **Windows:** `C:\Users\<username>\AppData\Roaming\dictation\dictation\`
+  - **macOS:** `/Users/<username>/Library/Application Support/com.dictation.dictation/`
+  - **Linux:** `/home/<username>/.local/share/dictation/dictation/`
+- Application logs are written to:
+  - `<base_path>/logs/application.log`
+- Trace files are written to:
+  - `<base_path>/logs/traces/`
+
+### Retention / rotation
+
+- `application.log` keeps only the last **1000 lines**.
+- Trace retention keeps only the latest **100 trace files**.
+
+### Log levels
+
+- Default logging level is `info` (includes `info`, `warn`, `error`).
+- To enable debug logs, set:
+
+```bash
+DICTATION_ENABLE_DEBUG_LOGS=true
+```
+
+Accepted truthy values: `1`, `true`, `yes`, `on`.
+
 
 ## Architecture
 

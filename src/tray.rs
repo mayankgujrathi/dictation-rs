@@ -3,6 +3,7 @@ use std::sync::{
   atomic::{AtomicBool, Ordering},
 };
 
+use tracing::{debug, info};
 use tray_icon::{
   Icon, TrayIcon, TrayIconBuilder,
   menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
@@ -42,7 +43,10 @@ pub fn create_tray_icon() -> Icon {
     }
   }
 
-  Icon::from_rgba(buffer, size, size).expect("Failed to create icon from rgba")
+  let icon = Icon::from_rgba(buffer, size, size)
+    .expect("Failed to create icon from rgba");
+  debug!("tray icon created");
+  icon
 }
 
 /// Tray manager that holds the tray icon and handles events
@@ -52,6 +56,7 @@ pub struct TrayManager {
 
 impl TrayManager {
   pub fn new(_exit_requested: Arc<AtomicBool>) -> Self {
+    info!("initializing tray manager");
     let icon = create_tray_icon();
     let exit_item = MenuItem::with_id("exit", "Exit", true, None);
     let about_item = MenuItem::with_id("about", "About", true, None);
@@ -67,6 +72,7 @@ impl TrayManager {
       .with_icon(icon)
       .build()
       .expect("Failed to create tray icon");
+    info!("tray icon ready");
 
     Self {
       _tray_icon: Some(tray_icon),
@@ -77,8 +83,10 @@ impl TrayManager {
 /// Spawn a background thread to poll for tray events
 pub fn spawn_poll_thread(exit_requested: Arc<AtomicBool>) {
   std::thread::spawn(move || {
+    debug!("tray polling thread started");
     loop {
       if exit_requested.load(Ordering::SeqCst) {
+        info!("tray polling thread exiting due to app exit flag");
         break;
       }
 
@@ -86,6 +94,7 @@ pub fn spawn_poll_thread(exit_requested: Arc<AtomicBool>) {
       if let Ok(event) = menu_receiver.try_recv()
         && event.id.as_ref() == "exit"
       {
+        info!("tray exit command received");
         exit_requested.store(true, Ordering::SeqCst);
         break;
       }

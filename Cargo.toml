@@ -20,3 +20,6 @@ transcribe-rs = { version = "0.3", features = ["onnx", "ort-cuda", "ort-rocm", "
 arboard = "3"
 enigo = "0.2"
 active-win-pos-rs = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "std"] }
+tracing-appender = "0.2"

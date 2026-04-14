@@ -6,6 +6,7 @@ use std::sync::{
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use directories::ProjectDirs;
 use hound::{WavReader, WavSpec, WavWriter};
+use tracing::{debug, error, info, warn};
 
 const TARGET_RMS: f32 = 0.12;
 const MIN_GAIN: f32 = 0.8;
@@ -34,10 +35,6 @@ fn calculate_rms(samples: &[f32]) -> f32 {
 }
 
 fn model_base_dir() -> std::path::PathBuf {
-  if let Ok(override_path) = std::env::var("DICTATION_MODEL_BASE_DIR") {
-    return std::path::PathBuf::from(override_path);
-  }
-
   ProjectDirs::from("com", "dictation", "dictation")
     .map(|dirs| dirs.data_dir().to_path_buf())
     .unwrap_or_else(|| {
@@ -162,6 +159,7 @@ pub fn process_audio_for_saving(samples: &mut [f32]) {
 }
 
 fn post_process_and_save(temp_path: &std::path::Path) -> Result<(), String> {
+  debug!(temp_path = %temp_path.display(), "starting audio post-processing");
   let mut reader = WavReader::open(temp_path)
     .map_err(|e| format!("open temp wav failed: {e}"))?;
   let input_spec = reader.spec();
@@ -197,6 +195,8 @@ fn post_process_and_save(temp_path: &std::path::Path) -> Result<(), String> {
   writer
     .finalize()
     .map_err(|e| format!("finalize output wav failed: {e}"))?;
+
+  info!(output_path = %output_path.display(), "recording saved after post-processing");
 
   Ok(())
 }
@@ -251,6 +251,7 @@ impl RecordingState {
   }
 
   pub fn set_recording(&self, recording: bool) {
+    debug!(recording, "recording state set");
     self
       .is_recording
       .store(recording, std::sync::atomic::Ordering::SeqCst);
@@ -263,6 +264,7 @@ impl RecordingState {
 
   /// Start a new recording session
   pub fn record(&self) {
+    info!("recording requested");
     // User intent: recording requested
     self
       .is_recording
@@ -279,11 +281,12 @@ impl RecordingState {
 
     // Run recording in background thread
     std::thread::spawn(move || {
+      debug!("recording worker started");
       let host = cpal::default_host();
       let device = match host.default_input_device() {
         Some(d) => d,
         None => {
-          eprintln!("No default input device found");
+          error!("no default input device found");
           state
             .is_recording
             .store(false, std::sync::atomic::Ordering::SeqCst);
@@ -297,7 +300,7 @@ impl RecordingState {
       let config = match device.default_input_config() {
         Ok(c) => c,
         Err(e) => {
-          eprintln!("Failed to get input config: {}", e);
+          error!(error = %e, "failed to get input config");
           state
             .is_recording
             .store(false, std::sync::atomic::Ordering::SeqCst);
@@ -310,6 +313,7 @@ impl RecordingState {
 
       let source_sample_rate = config.sample_rate().0 as f64;
       let channels = config.channels() as usize;
+      info!(source_sample_rate, channels, "input device initialized");
 
       // Target: 16kHz, Mono, 16-bit PCM for Whisper compatibility
       let target_sample_rate = 16000u32;
@@ -326,7 +330,7 @@ impl RecordingState {
       let writer = match WavWriter::create(&temp_path, spec) {
         Ok(w) => w,
         Err(e) => {
-          eprintln!("Failed to create WavWriter: {}", e);
+          error!(error = %e, temp_path = %temp_path.display(), "failed to create wav writer");
           state
             .is_recording
             .store(false, std::sync::atomic::Ordering::SeqCst);
@@ -378,13 +382,13 @@ impl RecordingState {
           }
         },
         |err| {
-          eprintln!("Stream error: {}", err);
+          error!(error = %err, "input stream error");
         },
         None,
       ) {
         Ok(s) => s,
         Err(e) => {
-          eprintln!("Failed to build input stream: {}", e);
+          error!(error = %e, "failed to build input stream");
           state
             .is_recording
             .store(false, std::sync::atomic::Ordering::SeqCst);
@@ -396,7 +400,7 @@ impl RecordingState {
       };
 
       if let Err(e) = stream.play() {
-        eprintln!("Failed to play stream: {}", e);
+        error!(error = %e, "failed to start input stream playback");
         state
           .is_recording
           .store(false, std::sync::atomic::Ordering::SeqCst);
@@ -409,6 +413,7 @@ impl RecordingState {
       state
         .mic_ready
         .store(true, std::sync::atomic::Ordering::SeqCst);
+      info!("microphone stream is active");
 
       // Wait for recording to be stopped
       while is_recording_callback.load(std::sync::atomic::Ordering::SeqCst) {
@@ -432,11 +437,12 @@ impl RecordingState {
       {
         let _ = writer.finalize();
       }
+      debug!("recording stream finalized");
 
       // Post-process and save output to run/audio/recording.wav under model-base path
       if std::path::Path::new(&temp_path).exists() {
         if let Err(e) = post_process_and_save(&temp_path) {
-          eprintln!("Audio post-processing failed: {e}");
+          warn!(error = %e, "audio post-processing failed");
         }
         // Clean up temp file
         let _ = std::fs::remove_file(&temp_path);
@@ -446,6 +452,7 @@ impl RecordingState {
       state
         .recording_ready
         .store(true, std::sync::atomic::Ordering::SeqCst);
+      info!("recording cycle finalized and ready for transcription");
     });
   }
 }
