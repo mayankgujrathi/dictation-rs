@@ -55,19 +55,38 @@ The binary will be created at `target/release/dictation.exe`.
 
 ### Retention / rotation
 
-- `application.log` keeps only the last **1000 lines**.
-- Trace retention keeps only the latest **100 trace files**.
+- `application.log` keeps only the last **1000 lines** by default.
+- Trace retention keeps only the latest **100 trace files** by default.
+
+Both can be configured via `<base_path>/settings.json` (sibling of `logs/`).
 
 ### Log levels
 
 - Default logging level is `info` (includes `info`, `warn`, `error`).
-- To enable debug logs, set:
+- Debug logging can be enabled via `settings.json`.
 
-```bash
-DICTATION_ENABLE_DEBUG_LOGS=true
+### settings.json (logging)
+
+- Path: `<base_path>/settings.json`
+- Location relative to logs:
+  - `settings.json` lives next to `logs/`
+  - e.g. `<base_path>/settings.json` and `<base_path>/logs/`
+
+Example:
+
+```json
+{
+  "logging": {
+    "app_log_max_lines": 1000,
+    "trace_file_limit": 100,
+    "enable_debug_logs": false
+  }
+}
 ```
 
-Accepted truthy values: `1`, `true`, `yes`, `on`.
+Notes:
+- The app creates this file with defaults if it is missing.
+- Logging settings are refreshed at runtime (approximately every second).
 
 
 ## Architecture

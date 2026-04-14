@@ -4,24 +4,18 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use directories::ProjectDirs;
 use tracing::level_filters::LevelFilter;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::Layer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-const APP_LOG_MAX_LINES: usize = 1000;
-const TRACE_FILE_LIMIT: usize = 100;
+use crate::settings;
 
 static LOG_GUARDS: OnceLock<(WorkerGuard, WorkerGuard)> = OnceLock::new();
 
 fn data_dir() -> PathBuf {
-  ProjectDirs::from("com", "dictation", "dictation")
-    .map(|dirs| dirs.data_dir().to_path_buf())
-    .unwrap_or_else(|| {
-      std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir())
-    })
+  settings::data_dir()
 }
 
 fn logs_dir() -> PathBuf {
@@ -33,15 +27,7 @@ fn traces_dir() -> PathBuf {
 }
 
 fn debug_enabled() -> bool {
-  std::env::var("DICTATION_ENABLE_DEBUG_LOGS")
-    .ok()
-    .map(|v| {
-      matches!(
-        v.trim().to_ascii_lowercase().as_str(),
-        "1" | "true" | "yes" | "on"
-      )
-    })
-    .unwrap_or(false)
+  settings::current().logging.enable_debug_logs
 }
 
 fn trim_to_last_n_lines(path: &Path, max_lines: usize) -> Result<(), String> {
@@ -102,6 +88,11 @@ fn prune_old_trace_files(dir: &Path, keep: usize) -> Result<(), String> {
 }
 
 pub fn init_logging() -> Result<(), String> {
+  let _ = settings::refresh_from_disk();
+  let settings = settings::current();
+  let app_log_max_lines = settings.logging.app_log_max_lines;
+  let trace_file_limit = settings.logging.trace_file_limit;
+
   let logs_dir = logs_dir();
   let traces_dir = traces_dir();
   fs::create_dir_all(&logs_dir)
@@ -110,9 +101,9 @@ pub fn init_logging() -> Result<(), String> {
     .map_err(|e| format!("create traces dir failed: {e}"))?;
 
   let app_log_path = logs_dir.join("application.log");
-  trim_to_last_n_lines(&app_log_path, APP_LOG_MAX_LINES)?;
+  trim_to_last_n_lines(&app_log_path, app_log_max_lines)?;
 
-  prune_old_trace_files(&traces_dir, TRACE_FILE_LIMIT)?;
+  prune_old_trace_files(&traces_dir, trace_file_limit)?;
   let trace_file_name = format!(
     "trace-{}.log",
     SystemTime::now()
@@ -167,16 +158,31 @@ pub fn init_logging() -> Result<(), String> {
   tracing::info!(
     app_log = %app_log_path.display(),
     trace_file = %trace_file_path.display(),
-    debug_enabled = debug_enabled(),
+    debug_enabled = settings.logging.enable_debug_logs,
+    app_log_max_lines,
+    trace_file_limit,
     "logging initialized"
   );
 
   // Re-apply file-count retention after creating this run's trace.
-  prune_old_trace_files(&traces_dir, TRACE_FILE_LIMIT)?;
+  prune_old_trace_files(&traces_dir, trace_file_limit)?;
   Ok(())
 }
 
 pub fn enforce_app_log_retention() {
+  let _ = settings::refresh_from_disk();
+  let app_log_max_lines = settings::current().logging.app_log_max_lines;
   let path = logs_dir().join("application.log");
-  let _ = trim_to_last_n_lines(&path, APP_LOG_MAX_LINES);
+  let _ = trim_to_last_n_lines(&path, app_log_max_lines);
+}
+
+pub fn apply_runtime_logging_settings() {
+  if settings::refresh_from_disk().is_err() {
+    return;
+  }
+
+  let cfg = settings::current().logging;
+  let app_log_path = logs_dir().join("application.log");
+  let _ = trim_to_last_n_lines(&app_log_path, cfg.app_log_max_lines);
+  let _ = prune_old_trace_files(&traces_dir(), cfg.trace_file_limit);
 }

@@ -1,6 +1,7 @@
 mod app;
 mod audio;
 mod logging;
+mod settings;
 mod tray;
 
 use std::io::Write;
@@ -14,6 +15,7 @@ use single_instance::SingleInstance;
 use tracing::{debug, error, info, warn};
 
 fn main() -> eframe::Result<()> {
+  settings::initialize();
   if let Err(e) = logging::init_logging() {
     // Fallback path before logger is available.
     let _ = std::io::stderr()
@@ -50,6 +52,14 @@ fn main() -> eframe::Result<()> {
   // Spawn background thread for tray event polling
   tray::spawn_poll_thread(should_exit.clone());
   debug!("tray polling thread spawned");
+
+  let should_exit_for_settings = should_exit.clone();
+  let _settings_refresh_handle = runtime.spawn(async move {
+    while !should_exit_for_settings.load(Ordering::SeqCst) {
+      logging::apply_runtime_logging_settings();
+      tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    }
+  });
 
   // Recording state
   let recording_state = audio::RecordingState::new();
