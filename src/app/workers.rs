@@ -16,6 +16,7 @@ use reqwest::redirect::Policy;
 use tracing::{debug, error, info, warn};
 
 use crate::audio::recording_output_path;
+use crate::settings;
 use transcribe_rs::onnx::Quantization;
 use transcribe_rs::onnx::parakeet::{
   ParakeetModel, ParakeetParams, TimestampGranularity,
@@ -32,7 +33,6 @@ const MODEL_FILES: [&str; 4] = [
   "vocab.txt",
 ];
 const MODEL_SUCCESS_FLAG: &str = "download.success.flag";
-const MODEL_IDLE_TTL_SECS: u64 = 10 * 60;
 
 struct CachedParakeetModel {
   model: ParakeetModel,
@@ -54,10 +54,13 @@ fn model_cache() -> &'static Mutex<Option<CachedParakeetModel>> {
 }
 
 fn model_cache_ttl() -> Duration {
+  let settings_ttl_secs =
+    settings::current().transcription.model_cache_ttl_secs;
   let ttl_secs = std::env::var("DICTATION_MODEL_CACHE_TTL_SECS")
     .ok()
     .and_then(|v| v.parse::<u64>().ok())
-    .unwrap_or(MODEL_IDLE_TTL_SECS);
+    .unwrap_or(settings_ttl_secs)
+    .max(1);
   Duration::from_secs(ttl_secs)
 }
 
@@ -202,9 +205,11 @@ fn transcribe_call() -> Result<(), ()> {
   entry.last_used_at = Instant::now();
   drop(cache_guard);
 
+  let normalized_transcript =
+    process_transcript_with_custom_dictionary(transcript_text.as_str());
   let active_app_info = get_active_application_info();
   let final_transcript =
-    post_process_transcript(transcript_text.as_str(), &active_app_info);
+    post_process_transcript(normalized_transcript.as_str(), &active_app_info);
 
   if let Err(e) = update_clipboard_if_changed(final_transcript.as_str()) {
     warn!(error = %e, "failed updating clipboard");
@@ -217,6 +222,88 @@ fn transcribe_call() -> Result<(), ()> {
 
   info!(text = %result.text, "transcription completed");
   Ok(())
+}
+
+fn process_transcript_with_custom_dictionary(transcript_text: &str) -> String {
+  let cfg = settings::current();
+  let mut rules = build_dictionary_rules(
+    &cfg.transcription.built_in_dictionary,
+    &cfg.transcription.user_dictionary,
+  );
+
+  if rules.is_empty() {
+    return transcript_text.to_owned();
+  }
+
+  rules.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+
+  let mut out = transcript_text.to_owned();
+  for (from, to) in rules {
+    out = replace_case_insensitive(&out, &from, &to);
+  }
+  out
+}
+
+fn build_dictionary_rules(
+  built_in: &[String],
+  user_defined: &[String],
+) -> Vec<(String, String)> {
+  use std::collections::HashMap;
+
+  let mut by_key: HashMap<String, String> = HashMap::new();
+
+  for (from, to) in built_in
+    .iter()
+    .filter_map(|entry| parse_dictionary_entry(entry.as_str()))
+  {
+    by_key.insert(from, to);
+  }
+
+  for (from, to) in user_defined
+    .iter()
+    .filter_map(|entry| parse_dictionary_entry(entry.as_str()))
+  {
+    // User-defined dictionary overrides built-ins.
+    by_key.insert(from, to);
+  }
+
+  by_key.into_iter().collect()
+}
+
+fn parse_dictionary_entry(entry: &str) -> Option<(String, String)> {
+  let separators = ["=>", "->", "="];
+
+  for sep in separators {
+    let mut parts = entry.splitn(2, sep);
+    let left = parts.next().map(str::trim).unwrap_or_default();
+    let right = parts.next().map(str::trim).unwrap_or_default();
+    if !left.is_empty() && !right.is_empty() {
+      return Some((left.to_ascii_lowercase(), right.to_owned()));
+    }
+  }
+
+  None
+}
+
+fn replace_case_insensitive(input: &str, from: &str, to: &str) -> String {
+  if from.is_empty() {
+    return input.to_owned();
+  }
+
+  let input_lower = input.to_ascii_lowercase();
+  let mut out = String::with_capacity(input.len());
+  let mut cursor = 0usize;
+
+  while let Some(found) = input_lower[cursor..].find(from) {
+    let start = cursor + found;
+    let end = start + from.len();
+    out.push_str(&input[cursor..start]);
+    out.push_str(to);
+    cursor = end;
+  }
+
+  out.push_str(&input[cursor..]);
+  out
 }
 
 fn get_active_window_title() -> String {
@@ -700,5 +787,43 @@ mod tests {
     assert!(should_update_clipboard(Some("a"), "b"));
     assert!(should_update_clipboard(None, "b"));
     assert!(!should_update_clipboard(Some("b"), "b"));
+  }
+
+  #[test]
+  fn test_parse_dictionary_entry_accepts_multiple_separators() {
+    assert_eq!(
+      parse_dictionary_entry("lang chain=>LangChain"),
+      Some(("lang chain".to_owned(), "LangChain".to_owned()))
+    );
+    assert_eq!(
+      parse_dictionary_entry("langchain->LangChain"),
+      Some(("langchain".to_owned(), "LangChain".to_owned()))
+    );
+    assert_eq!(
+      parse_dictionary_entry("llm=LLM"),
+      Some(("llm".to_owned(), "LLM".to_owned()))
+    );
+  }
+
+  #[test]
+  fn test_build_dictionary_rules_user_overrides_built_in() {
+    let built_in = vec!["langchain=>Lang Chain".to_owned()];
+    let user = vec!["langchain=>LangChain".to_owned()];
+
+    let rules = build_dictionary_rules(&built_in, &user);
+    assert!(rules.contains(&("langchain".to_owned(), "LangChain".to_owned())));
+    assert!(
+      !rules.contains(&("langchain".to_owned(), "Lang Chain".to_owned()))
+    );
+  }
+
+  #[test]
+  fn test_replace_case_insensitive_replaces_all_matches() {
+    let out = replace_case_insensitive(
+      "we use Lang Chain and lang chain daily",
+      "lang chain",
+      "LangChain",
+    );
+    assert_eq!(out, "we use LangChain and LangChain daily");
   }
 }
