@@ -52,6 +52,13 @@ The binary will be created at `target/release/dictation.exe`.
   - `<base_path>/logs/application.log`
 - Trace files are written to:
   - `<base_path>/logs/traces/`
+  - File format: `trace-<timestamp>.json` (Chrome Trace Event format)
+
+### Viewing traces graphically
+
+- Open trace files in **Perfetto UI** (recommended): https://ui.perfetto.dev
+- Or open with Chromium tracing at `chrome://tracing`
+- Load a file from `<base_path>/logs/traces/trace-<timestamp>.json`
 
 ### Retention / rotation
 
@@ -80,6 +87,11 @@ Example:
     "app_log_max_lines": 1000,
     "trace_file_limit": 100,
     "enable_debug_logs": false
+  },
+  "transcription": {
+    "built_in_dictionary": [],
+    "user_dictionary": [],
+    "model_cache_ttl_secs": 600
   }
 }
 ```
@@ -93,23 +105,38 @@ Notes:
 
 ```
 src/
-├── main.rs          - Application entry point and lifecycle wiring
-├── lib.rs           - Shared library exports for app modules
-├── audio.rs         - Audio capture pipeline (cpal), processing, and WAV handling
-├── tray.rs          - System tray integration and shutdown actions
+├── main.rs          - Application entry point, runtime/bootstrap, hotkey listener, and app wiring
+├── lib.rs           - Library exports for core modules
+├── audio.rs         - Audio capture (cpal), buffering, and WAV writing
+├── logging.rs       - File logging/tracing initialization, retention, and runtime log-level refresh
+├── settings.rs      - Persistent settings loading/defaults and runtime access
+├── tray.rs          - Tray icon/menu integration and graceful shutdown signaling
 └── app/
-    ├── mod.rs       - eframe/egui overlay state, rendering, and UI events
-    └── workers.rs   - Background workers for recording/transcription orchestration
+    ├── mod.rs       - VoiceApp state and high-level app module composition
+    ├── constants.rs - Shared UI constants (window size/history limits)
+    ├── positioning.rs - Overlay window placement logic
+    ├── render.rs    - egui rendering and UI state transitions
+    ├── state.rs     - UI state definitions for download/recording/transcription phases
+    └── workers.rs   - Background workers (model download/readiness and transcription workflow)
 ```
 
 ### Key Components
 
-- **cpal**: Cross-platform microphone capture
-- **eframe/egui**: Always-on-top overlay widget and visualization UI
+- **cpal**: Cross-platform microphone capture/input stream handling
+- **eframe/egui**: Always-on-top transparent overlay UI and visualization rendering
+- **winit**: Window/monitor integration used for positioning behavior
 - **hound**: WAV encoding for captured audio segments
-- **rdev**: Global key listener for push-to-toggle recording (`` Ctrl + ` `` on Windows/Linux, ``Command + ` `` on macOS)
-- **tray-icon**: Native tray icon/menu integration
-- **tokio**: Async runtime for background coordination and non-blocking tasks
+- **rdev**: Global hotkey listener (``Ctrl + ` `` on Windows/Linux, ``Command + ` `` on macOS)
+- **tokio**: Async runtime for background workers and periodic tasks
+- **tray-icon**: Native system tray menu and exit action
+- **single-instance**: Prevents running duplicate app instances
+- **transcribe-rs**: Local speech-to-text inference/model orchestration
+- **reqwest**: Model/network download support used by transcription pipeline
+- **arboard**: Clipboard write integration for transcribed output
+- **enigo**: Simulated keystroke typing into the active text field
+- **active-win-pos-rs**: Active window metadata used for typing/placement context
+- **tracing + tracing-subscriber + tracing-appender + tracing-chrome**: Structured app logging and Chrome Trace generation
+- **serde/serde_json**: `settings.json` serialization/deserialization
 
 ## License
 

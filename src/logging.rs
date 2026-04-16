@@ -1,18 +1,21 @@
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use tracing::level_filters::LevelFilter;
 use tracing_appender::non_blocking::WorkerGuard;
+use tracing_chrome::FlushGuard;
 use tracing_subscriber::Layer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 use crate::settings;
 
-static LOG_GUARDS: OnceLock<(WorkerGuard, WorkerGuard)> = OnceLock::new();
+static APP_LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
+static TRACE_FLUSH_GUARD: OnceLock<Mutex<FlushGuard>> = OnceLock::new();
 
 fn data_dir() -> PathBuf {
   settings::data_dir()
@@ -105,7 +108,7 @@ pub fn init_logging() -> Result<(), String> {
 
   prune_old_trace_files(&traces_dir, trace_file_limit)?;
   let trace_file_name = format!(
-    "trace-{}.log",
+    "trace-{}.json",
     SystemTime::now()
       .duration_since(UNIX_EPOCH)
       .map(|d| d.as_millis())
@@ -118,15 +121,11 @@ pub fn init_logging() -> Result<(), String> {
     .append(true)
     .open(&app_log_path)
     .map_err(|e| format!("open application log failed: {e}"))?;
-  let trace_file = OpenOptions::new()
-    .create(true)
-    .append(true)
-    .open(&trace_file_path)
-    .map_err(|e| format!("open trace file failed: {e}"))?;
-
   let (app_non_blocking, app_guard) = tracing_appender::non_blocking(app_file);
-  let (trace_non_blocking, trace_guard) =
-    tracing_appender::non_blocking(trace_file);
+  let (trace_layer, trace_guard) = tracing_chrome::ChromeLayerBuilder::new()
+    .file(&trace_file_path)
+    .include_args(true)
+    .build();
 
   let level = if debug_enabled() {
     LevelFilter::DEBUG
@@ -140,13 +139,7 @@ pub fn init_logging() -> Result<(), String> {
     .with_target(true)
     .with_filter(level);
 
-  let trace_layer = tracing_subscriber::fmt::layer()
-    .with_writer(trace_non_blocking)
-    .with_ansi(false)
-    .with_target(true)
-    .with_thread_ids(true)
-    .with_thread_names(true)
-    .with_filter(level);
+  let trace_layer = trace_layer.with_filter(level);
 
   tracing_subscriber::registry()
     .with(app_layer)
@@ -154,7 +147,8 @@ pub fn init_logging() -> Result<(), String> {
     .try_init()
     .map_err(|e| format!("install tracing subscriber failed: {e}"))?;
 
-  let _ = LOG_GUARDS.set((app_guard, trace_guard));
+  let _ = APP_LOG_GUARD.set(app_guard);
+  let _ = TRACE_FLUSH_GUARD.set(Mutex::new(trace_guard));
   tracing::info!(
     app_log = %app_log_path.display(),
     trace_file = %trace_file_path.display(),
