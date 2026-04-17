@@ -208,8 +208,16 @@ fn transcribe_call() -> Result<(), ()> {
   let normalized_transcript =
     process_transcript_with_custom_dictionary(transcript_text.as_str());
   let active_app_info = get_active_application_info();
-  let final_transcript =
-    post_process_transcript(normalized_transcript.as_str(), &active_app_info);
+  let final_transcript = match post_process_transcript(
+    normalized_transcript.as_str(),
+    &active_app_info,
+  ) {
+    Ok(text) => text,
+    Err(()) => {
+      error!("post processing transcript failed");
+      return Err(());
+    }
+  };
 
   if let Err(e) = update_clipboard_if_changed(final_transcript.as_str()) {
     warn!(error = %e, "failed updating clipboard");
@@ -451,14 +459,14 @@ fn parse_app_metadata_from_tsv_output(
 fn post_process_transcript(
   transcript_text: &str,
   active_app_info: &ActiveApplicationInfo,
-) -> String {
+) -> Result<String, ()> {
   debug!(
     window_title = %active_app_info.window_title,
     app_name = ?active_app_info.application_name,
     app_description = ?active_app_info.application_description,
     "post processing transcript for active app context"
   );
-  transcript_text.to_owned()
+  Ok(transcript_text.to_owned())
 }
 
 fn paste_from_clipboard_into_active_input_field() -> Result<(), String> {
@@ -768,7 +776,8 @@ mod tests {
       application_name: Some("Editor".to_owned()),
       application_description: Some("Code Editor".to_owned()),
     };
-    let out = post_process_transcript("hello world", &app_info);
+    let out = post_process_transcript("hello world", &app_info)
+      .expect("post processing should succeed");
     assert_eq!(out, "hello world");
   }
 
