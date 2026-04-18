@@ -24,6 +24,10 @@ mod tray_manager_tests {
   use std::sync::atomic::Ordering;
 
   #[test]
+  #[cfg_attr(
+    target_os = "macos",
+    ignore = "muda::Menu must be created on the main thread on macOS test runners"
+  )]
   fn test_tray_manager_initialization() {
     let exit_flag = Arc::new(AtomicBool::new(false));
 
@@ -38,6 +42,10 @@ mod tray_manager_tests {
   }
 
   #[test]
+  #[cfg_attr(
+    target_os = "macos",
+    ignore = "muda::Menu must be created on the main thread on macOS test runners"
+  )]
   fn test_exit_flag_state_unchanged_after_manager_init() {
     let exit_flag = Arc::new(AtomicBool::new(false));
     let _manager = TrayManager::new(exit_flag.clone());
@@ -46,6 +54,10 @@ mod tray_manager_tests {
   }
 
   #[test]
+  #[cfg_attr(
+    target_os = "macos",
+    ignore = "muda::Menu must be created on the main thread on macOS test runners"
+  )]
   fn test_preexisting_exit_flag_remains_true_after_manager_init() {
     let exit_flag = Arc::new(AtomicBool::new(true));
     let _manager = TrayManager::new(exit_flag.clone());
