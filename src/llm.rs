@@ -6,6 +6,15 @@ use async_openai::types::{
 };
 use tracing::{debug, error};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LlmError {
+  RuntimeInit,
+  MessageBuild,
+  RequestBuild,
+  Api,
+  EmptyResponse,
+}
+
 #[derive(Debug, Clone)]
 pub struct LlmPostProcessorConfig {
   pub api_key: Option<String>,
@@ -27,7 +36,7 @@ pub fn process_transcript_with_llm(
   cfg: &LlmPostProcessorConfig,
   transcript_text: &str,
   app_context: &LlmAppContext,
-) -> Result<String, ()> {
+) -> Result<String, LlmError> {
   let runtime = match tokio::runtime::Builder::new_current_thread()
     .enable_all()
     .build()
@@ -35,7 +44,7 @@ pub fn process_transcript_with_llm(
     Ok(rt) => rt,
     Err(e) => {
       error!(error = %e, "failed to create llm runtime");
-      return Err(());
+      return Err(LlmError::RuntimeInit);
     }
   };
 
@@ -50,7 +59,7 @@ async fn process_transcript_with_llm_async(
   cfg: &LlmPostProcessorConfig,
   transcript_text: &str,
   app_context: &LlmAppContext,
-) -> Result<String, ()> {
+) -> Result<String, LlmError> {
   let mut openai_cfg = OpenAIConfig::new().with_api_base(cfg.base_url.clone());
   if let Some(api_key) = cfg.api_key.as_ref().filter(|v| !v.trim().is_empty()) {
     openai_cfg = openai_cfg.with_api_key(api_key.clone());
@@ -75,7 +84,7 @@ async fn process_transcript_with_llm_async(
       .build();
     let Ok(system_message) = system_message else {
       error!("failed to build llm system message");
-      return Err(());
+      return Err(LlmError::MessageBuild);
     };
     messages.push(system_message.into());
   }
@@ -85,7 +94,7 @@ async fn process_transcript_with_llm_async(
     .build();
   let Ok(user_message) = user_message else {
     error!("failed to build llm user message");
-    return Err(());
+    return Err(LlmError::MessageBuild);
   };
   messages.push(user_message.into());
 
@@ -95,13 +104,13 @@ async fn process_transcript_with_llm_async(
     .build();
   let Ok(request) = request else {
     error!("failed to build llm chat request");
-    return Err(());
+    return Err(LlmError::RequestBuild);
   };
 
   let response = client.chat().create(request).await;
   let Ok(response) = response else {
     error!(error = ?response.err(), "llm chat request failed");
-    return Err(());
+    return Err(LlmError::Api);
   };
 
   let text = response
@@ -113,13 +122,13 @@ async fn process_transcript_with_llm_async(
 
   let Some(text) = text else {
     debug!("llm response had no usable content");
-    return Err(());
+    return Err(LlmError::EmptyResponse);
   };
 
   let reformatted = text.trim().to_owned();
   if reformatted.is_empty() {
     error!("llm response was empty after trimming");
-    return Err(());
+    return Err(LlmError::EmptyResponse);
   }
 
   debug!(reformatted_transcript = %reformatted, "llm plain-text output accepted");

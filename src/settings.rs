@@ -21,7 +21,7 @@ pub enum TranscriptReformattingLevel {
   Freeform,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(default)]
 pub struct AppSettings {
   pub logging: LoggingSettings,
@@ -72,15 +72,6 @@ impl Default for LoggingSettings {
       app_log_max_lines: 1000,
       trace_file_limit: 100,
       enable_debug_logs: false,
-    }
-  }
-}
-
-impl Default for AppSettings {
-  fn default() -> Self {
-    Self {
-      logging: LoggingSettings::default(),
-      transcription: TranscriptionSettings::default(),
     }
   }
 }

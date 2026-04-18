@@ -512,6 +512,7 @@ fn post_process_transcript(
   };
 
   process_transcript_with_llm(&llm_cfg, transcript_text, &app_context)
+    .map_err(|_| ())
 }
 
 fn reformatting_level_label(
