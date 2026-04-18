@@ -72,7 +72,9 @@ jobs:
             libxkbcommon-dev \
             libxkbcommon-x11-dev \
             libxdo-dev \
-            libudev-dev
+            libudev-dev \
+            libayatana-appindicator3-1 \
+            libayatana-appindicator3-dev
 
       - name: Verify Linux GUI/audio dependencies are present
         if: runner.os == 'Linux'
@@ -92,6 +94,7 @@ jobs:
           pkg-config --exists wayland-client
           pkg-config --exists libudev
           ldconfig -p | grep -q libxdo
+          ldconfig -p | grep -Eq 'libayatana-appindicator3\.so|libappindicator3\.so'
 
       - name: Detect accelerator and choose build feature (Linux)
         if: runner.os == 'Linux'
