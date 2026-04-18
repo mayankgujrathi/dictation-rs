@@ -24,11 +24,15 @@ mod tray_manager_tests {
   use std::sync::atomic::Ordering;
 
   #[test]
+  #[cfg_attr(
+    target_os = "macos",
+    ignore = "muda::Menu must be created on the main thread on macOS test runners"
+  )]
   fn test_tray_manager_initialization() {
     let exit_flag = Arc::new(AtomicBool::new(false));
 
     // This verifies that tray manager can be created without panicking
-    let _manager = TrayManager::new(exit_flag.clone());
+    let _manager = TrayManager::new_for_test(exit_flag.clone());
 
     // Verify exit flag is initially false
     assert!(!exit_flag.load(Ordering::SeqCst));
@@ -38,17 +42,25 @@ mod tray_manager_tests {
   }
 
   #[test]
+  #[cfg_attr(
+    target_os = "macos",
+    ignore = "muda::Menu must be created on the main thread on macOS test runners"
+  )]
   fn test_exit_flag_state_unchanged_after_manager_init() {
     let exit_flag = Arc::new(AtomicBool::new(false));
-    let _manager = TrayManager::new(exit_flag.clone());
+    let _manager = TrayManager::new_for_test(exit_flag.clone());
 
     assert!(!exit_flag.load(Ordering::SeqCst));
   }
 
   #[test]
+  #[cfg_attr(
+    target_os = "macos",
+    ignore = "muda::Menu must be created on the main thread on macOS test runners"
+  )]
   fn test_preexisting_exit_flag_remains_true_after_manager_init() {
     let exit_flag = Arc::new(AtomicBool::new(true));
-    let _manager = TrayManager::new(exit_flag.clone());
+    let _manager = TrayManager::new_for_test(exit_flag.clone());
 
     assert!(exit_flag.load(Ordering::SeqCst));
   }

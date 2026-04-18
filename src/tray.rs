@@ -78,6 +78,16 @@ impl TrayManager {
       _tray_icon: Some(tray_icon),
     }
   }
+
+  /// Test-only constructor that avoids creating real GTK-backed tray resources.
+  ///
+  /// This keeps unit tests deterministic in headless CI environments where
+  /// GTK may be unavailable or not initialized.
+  #[allow(dead_code)]
+  pub fn new_for_test(_exit_requested: Arc<AtomicBool>) -> Self {
+    info!("initializing tray manager in test mode (no OS tray resources)");
+    Self { _tray_icon: None }
+  }
 }
 
 /// Spawn a background thread to poll for tray events

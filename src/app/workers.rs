@@ -251,7 +251,7 @@ fn process_transcript_with_custom_dictionary(transcript_text: &str) -> String {
     return transcript_text.to_owned();
   }
 
-  rules.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+  rules.sort_by_key(|b| std::cmp::Reverse(b.0.len()));
 
   let mut out = transcript_text.to_owned();
   for (from, to) in rules {
@@ -512,6 +512,7 @@ fn post_process_transcript(
   };
 
   process_transcript_with_llm(&llm_cfg, transcript_text, &app_context)
+    .map_err(|_| ())
 }
 
 fn reformatting_level_label(
@@ -670,9 +671,11 @@ fn run_model_download(progress: Arc<AtomicU32>) {
       }
 
       downloaded_bytes = downloaded_bytes.saturating_add(read as u64);
-      if total_bytes > 0 {
-        let pct = ((downloaded_bytes.saturating_mul(100)) / total_bytes)
-          .min(100) as u32;
+      if let Some(pct) = downloaded_bytes
+        .saturating_mul(100)
+        .checked_div(total_bytes)
+      {
+        let pct = pct.min(100) as u32;
         progress.store(pct, Ordering::Relaxed);
       }
     }
@@ -722,14 +725,18 @@ mod tests {
 
   #[test]
   fn test_cache_entry_expiry_logic() {
-    let now = Instant::now();
+    let last_used = Instant::now();
     let ttl = Duration::from_secs(600);
 
-    let fresh = now - Duration::from_secs(100);
-    let expired = now - Duration::from_secs(700);
+    let now_fresh = last_used
+      .checked_add(Duration::from_secs(100))
+      .expect("instant should support adding 100s");
+    let now_expired = last_used
+      .checked_add(Duration::from_secs(700))
+      .expect("instant should support adding 700s");
 
-    assert!(!is_cache_entry_expired(fresh, now, ttl));
-    assert!(is_cache_entry_expired(expired, now, ttl));
+    assert!(!is_cache_entry_expired(last_used, now_fresh, ttl));
+    assert!(is_cache_entry_expired(last_used, now_expired, ttl));
   }
 
   #[test]

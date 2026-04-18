@@ -1,7 +1,15 @@
 [package]
 name = "dictation"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2024"
+
+[features]
+default = ["ort-cpu"]
+ort-cpu = ["transcribe-rs/onnx"]
+ort-cuda = ["transcribe-rs/onnx", "transcribe-rs/ort-cuda"]
+ort-coreml = ["transcribe-rs/onnx", "transcribe-rs/ort-coreml"]
+x11 = ["eframe/x11", "winit/x11"]
+wayland = ["eframe/wayland", "winit/wayland"]
 
 [dependencies]
 cpal = "0.15"
@@ -16,7 +24,7 @@ winit = "0.30"
 single-instance = "0.3"
 directories = "5"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
-transcribe-rs = { version = "0.3", features = ["onnx", "ort-cuda", "ort-rocm", "ort-directml", "ort-coreml"]}
+transcribe-rs = { version = "0.3", default-features = false }
 arboard = "3"
 enigo = "0.2"
 active-win-pos-rs = "0.8"
