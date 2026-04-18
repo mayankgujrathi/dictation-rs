@@ -251,7 +251,7 @@ fn process_transcript_with_custom_dictionary(transcript_text: &str) -> String {
     return transcript_text.to_owned();
   }
 
-  rules.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+  rules.sort_by_key(|b| std::cmp::Reverse(b.0.len()));
 
   let mut out = transcript_text.to_owned();
   for (from, to) in rules {
@@ -671,9 +671,11 @@ fn run_model_download(progress: Arc<AtomicU32>) {
       }
 
       downloaded_bytes = downloaded_bytes.saturating_add(read as u64);
-      if total_bytes > 0 {
-        let pct = ((downloaded_bytes.saturating_mul(100)) / total_bytes)
-          .min(100) as u32;
+      if let Some(pct) = downloaded_bytes
+        .saturating_mul(100)
+        .checked_div(total_bytes)
+      {
+        let pct = pct.min(100) as u32;
         progress.store(pct, Ordering::Relaxed);
       }
     }
