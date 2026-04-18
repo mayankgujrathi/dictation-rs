@@ -161,6 +161,7 @@ jobs:
         shell: pwsh
         run: |
           where.exe link
+          Get-Command link | Format-List *
           rustc -vV
           cargo -V
           if ($env:CUDA_PATH) { Write-Host "CUDA_PATH=$env:CUDA_PATH" }
@@ -190,23 +191,47 @@ jobs:
       - name: Rustfmt check
         run: cargo fmt --all -- --check
 
-      - name: Clippy
+      - name: Clippy (non-Windows)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           FEATURE="${{ steps.cargo_features.outputs.value }}"
           cargo clippy --workspace --all-targets --no-default-features --features "$FEATURE" -- -D warnings
 
-      - name: Test
+      - name: Clippy (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $feature = "${{ steps.cargo_features.outputs.value }}"
+          cargo clippy --workspace --all-targets --no-default-features --features $feature -- -D warnings
+
+      - name: Test (non-Windows)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           FEATURE="${{ steps.cargo_features.outputs.value }}"
           cargo test --workspace --no-default-features --features "$FEATURE"
 
-      - name: Build release
+      - name: Test (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $feature = "${{ steps.cargo_features.outputs.value }}"
+          cargo test --workspace --no-default-features --features $feature
+
+      - name: Build release (non-Windows)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           FEATURE="${{ steps.cargo_features.outputs.value }}"
           cargo build --release --no-default-features --features "$FEATURE"
+
+      - name: Build release (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $feature = "${{ steps.cargo_features.outputs.value }}"
+          cargo build --release --no-default-features --features $feature
 
       - name: Package artifact (Linux/macOS)
         if: runner.os != 'Windows'

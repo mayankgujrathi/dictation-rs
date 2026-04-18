@@ -161,11 +161,19 @@ jobs:
         shell: bash
         run: echo "feature=ort-coreml" >> "$GITHUB_OUTPUT"
 
-      - name: Build release
+      - name: Build release (non-Windows)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           FEATURE="${{ steps.cargo_features.outputs.value }}"
           cargo build --release --locked --no-default-features --features "$FEATURE"
+
+      - name: Build release (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $feature = "${{ steps.cargo_features.outputs.value }}"
+          cargo build --release --locked --no-default-features --features $feature
 
       - name: Package artifact (Linux/macOS)
         if: runner.os != 'Windows'
