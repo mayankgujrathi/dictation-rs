@@ -1,5 +1,6 @@
 mod app;
 mod audio;
+mod llm;
 mod logging;
 mod settings;
 mod tray;

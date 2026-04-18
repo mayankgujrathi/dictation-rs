@@ -4,5 +4,6 @@
 
 pub mod app;
 pub mod audio;
+pub mod llm;
 pub mod settings;
 pub mod tray;

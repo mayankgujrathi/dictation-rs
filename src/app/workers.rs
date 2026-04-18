@@ -16,7 +16,10 @@ use reqwest::redirect::Policy;
 use tracing::{debug, error, info, warn};
 
 use crate::audio::recording_output_path;
-use crate::settings;
+use crate::llm::{
+  LlmAppContext, LlmPostProcessorConfig, process_transcript_with_llm,
+};
+use crate::settings::{self, TranscriptReformattingLevel};
 use transcribe_rs::onnx::Quantization;
 use transcribe_rs::onnx::parakeet::{
   ParakeetModel, ParakeetParams, TimestampGranularity,
@@ -218,6 +221,11 @@ fn transcribe_call() -> Result<(), ()> {
       return Err(());
     }
   };
+
+  info!(
+    final_transcript = %final_transcript,
+    "final transcript after post-processing"
+  );
 
   if let Err(e) = update_clipboard_if_changed(final_transcript.as_str()) {
     warn!(error = %e, "failed updating clipboard");
@@ -466,7 +474,55 @@ fn post_process_transcript(
     app_description = ?active_app_info.application_description,
     "post processing transcript for active app context"
   );
-  Ok(transcript_text.to_owned())
+
+  let cfg = settings::current().transcription;
+  let reformatting_level = &cfg.transcript_reformatting_level;
+  if matches!(reformatting_level, TranscriptReformattingLevel::None) {
+    debug!(
+      "transcript reformatting level is none; skipping llm post-processing"
+    );
+    return Ok(transcript_text.to_owned());
+  }
+
+  if cfg.llm_base_url.trim().is_empty()
+    || cfg.llm_model_name.trim().is_empty()
+    || cfg.llm_custom_prompt.trim().is_empty()
+  {
+    error!(
+      level = ?reformatting_level,
+      base_url = %cfg.llm_base_url,
+      model = %cfg.llm_model_name,
+      "llm post processing requires model settings when reformatting level is not none"
+    );
+    return Err(());
+  }
+
+  let llm_cfg = LlmPostProcessorConfig {
+    api_key: cfg.llm_api_key,
+    base_url: cfg.llm_base_url,
+    model_name: cfg.llm_model_name,
+    custom_prompt: cfg.llm_custom_prompt,
+    system_prompt: cfg.llm_system_prompt,
+    reformatting_level: reformatting_level_label(reformatting_level).to_owned(),
+  };
+  let app_context = LlmAppContext {
+    window_title: active_app_info.window_title.clone(),
+    application_name: active_app_info.application_name.clone(),
+    application_description: active_app_info.application_description.clone(),
+  };
+
+  process_transcript_with_llm(&llm_cfg, transcript_text, &app_context)
+}
+
+fn reformatting_level_label(
+  level: &TranscriptReformattingLevel,
+) -> &'static str {
+  match level {
+    TranscriptReformattingLevel::None => "none",
+    TranscriptReformattingLevel::Minimal => "minimal",
+    TranscriptReformattingLevel::Normal => "normal",
+    TranscriptReformattingLevel::Freeform => "freeform",
+  }
 }
 
 fn paste_from_clipboard_into_active_input_field() -> Result<(), String> {
@@ -771,6 +827,19 @@ mod tests {
 
   #[test]
   fn test_post_process_transcript_returns_input_text() {
+    let _guard = TEST_CWD_LOCK
+      .lock()
+      .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    let mut cfg = settings::current();
+    cfg.transcription.transcript_reformatting_level =
+      TranscriptReformattingLevel::None;
+    let json =
+      serde_json::to_string_pretty(&cfg).expect("should serialize settings");
+    std::fs::write(settings::settings_path(), json)
+      .expect("should write settings file");
+    let _ = settings::refresh_from_disk();
+
     let app_info = ActiveApplicationInfo {
       window_title: "Some Window".to_owned(),
       application_name: Some("Editor".to_owned()),
@@ -779,6 +848,36 @@ mod tests {
     let out = post_process_transcript("hello world", &app_info)
       .expect("post processing should succeed");
     assert_eq!(out, "hello world");
+  }
+
+  #[test]
+  fn test_post_process_transcript_returns_err_when_enabled_with_missing_model_name()
+   {
+    let _guard = TEST_CWD_LOCK
+      .lock()
+      .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    let app_info = ActiveApplicationInfo {
+      window_title: "Some Window".to_owned(),
+      application_name: Some("Editor".to_owned()),
+      application_description: Some("Code Editor".to_owned()),
+    };
+
+    let mut cfg = settings::current();
+    cfg.transcription.transcript_reformatting_level =
+      TranscriptReformattingLevel::Minimal;
+    cfg.transcription.llm_model_name = String::new();
+    cfg.transcription.llm_base_url = "http://localhost:11434/v1".to_owned();
+    cfg.transcription.llm_custom_prompt = "Fix transcript".to_owned();
+
+    let json =
+      serde_json::to_string_pretty(&cfg).expect("should serialize settings");
+    std::fs::write(settings::settings_path(), json)
+      .expect("should write settings file");
+    let _ = settings::refresh_from_disk();
+
+    let out = post_process_transcript("hello world", &app_info);
+    assert!(out.is_err());
   }
 
   #[test]

@@ -5,6 +5,22 @@ use std::sync::{OnceLock, RwLock};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
+use crate::app::{
+  DEFAULT_LLM_BASE_URL, DEFAULT_LLM_CUSTOM_PROMPT, DEFAULT_LLM_MODEL_NAME,
+  DEFAULT_LLM_SYSTEM_PROMPT,
+};
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TranscriptReformattingLevel {
+  #[default]
+  None,
+  Minimal,
+  Normal,
+  #[serde(alias = "actionable")]
+  Freeform,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct AppSettings {
@@ -26,6 +42,12 @@ pub struct TranscriptionSettings {
   pub built_in_dictionary: Vec<String>,
   pub user_dictionary: Vec<String>,
   pub model_cache_ttl_secs: u64,
+  pub transcript_reformatting_level: TranscriptReformattingLevel,
+  pub llm_api_key: Option<String>,
+  pub llm_base_url: String,
+  pub llm_model_name: String,
+  pub llm_custom_prompt: String,
+  pub llm_system_prompt: String,
 }
 
 impl Default for TranscriptionSettings {
@@ -34,6 +56,12 @@ impl Default for TranscriptionSettings {
       built_in_dictionary: Vec::new(),
       user_dictionary: Vec::new(),
       model_cache_ttl_secs: 10 * 60,
+      transcript_reformatting_level: TranscriptReformattingLevel::None,
+      llm_api_key: None,
+      llm_base_url: DEFAULT_LLM_BASE_URL.to_owned(),
+      llm_model_name: DEFAULT_LLM_MODEL_NAME.to_owned(),
+      llm_custom_prompt: DEFAULT_LLM_CUSTOM_PROMPT.to_owned(),
+      llm_system_prompt: DEFAULT_LLM_SYSTEM_PROMPT.to_owned(),
     }
   }
 }
@@ -189,6 +217,12 @@ mod tests {
     assert!(updated.contains("\"built_in_dictionary\""));
     assert!(updated.contains("\"user_dictionary\""));
     assert!(updated.contains("\"model_cache_ttl_secs\""));
+    assert!(updated.contains("\"transcript_reformatting_level\""));
+    assert!(updated.contains("\"llm_api_key\""));
+    assert!(updated.contains("\"llm_base_url\""));
+    assert!(updated.contains("\"llm_model_name\""));
+    assert!(updated.contains("\"llm_custom_prompt\""));
+    assert!(updated.contains("\"llm_system_prompt\""));
 
     let _ = fs::remove_file(&file);
     let _ = fs::remove_dir_all(&dir);

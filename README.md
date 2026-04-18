@@ -91,10 +91,22 @@ Example:
   "transcription": {
     "built_in_dictionary": [],
     "user_dictionary": [],
-    "model_cache_ttl_secs": 600
+    "model_cache_ttl_secs": 600,
+    "transcript_reformatting_level": "none",
+    "llm_api_key": null,
+    "llm_base_url": "http://localhost:11434/v1",
+    "llm_model_name": "",
+    "llm_custom_prompt": "Rewrite the transcript according to the requested reformatting level and active application context while preserving user intent.",
+    "llm_system_prompt": "..."
   }
 }
 ```
+
+`transcript_reformatting_level` controls post-processing behavior:
+- `none` (default): skip model call, return normalized transcript as-is
+- `minimal`: small readability fixes
+- `normal`: context-aware rewrite while preserving intent
+- `freeform`: advanced context-targeted output
 
 Notes:
 - The app creates this file with defaults if it is missing.

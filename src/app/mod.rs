@@ -12,7 +12,10 @@ mod render;
 mod state;
 mod workers;
 
-pub use constants::{HISTORY_LEN, WINDOW_INNER_SIZE};
+pub use constants::{
+  DEFAULT_LLM_BASE_URL, DEFAULT_LLM_CUSTOM_PROMPT, DEFAULT_LLM_MODEL_NAME,
+  DEFAULT_LLM_SYSTEM_PROMPT, HISTORY_LEN, WINDOW_INNER_SIZE,
+};
 pub use state::UIState;
 
 #[cfg(test)]
