@@ -79,6 +79,7 @@ jobs:
             libxcb-xfixes0-dev \
             libxkbcommon-dev \
             libxkbcommon-x11-dev \
+            libxdo-dev \
             libudev-dev
 
       - name: Verify Linux GUI/audio dependencies are present
@@ -98,6 +99,7 @@ jobs:
           pkg-config --exists atk
           pkg-config --exists wayland-client
           pkg-config --exists libudev
+          ldconfig -p | grep -q libxdo
 
       - name: Resolve artifact tag baseline
         id: tag_base
