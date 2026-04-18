@@ -725,18 +725,18 @@ mod tests {
 
   #[test]
   fn test_cache_entry_expiry_logic() {
-    let now = Instant::now();
+    let last_used = Instant::now();
     let ttl = Duration::from_secs(600);
 
-    let fresh = now
-      .checked_sub(Duration::from_secs(100))
-      .expect("now should be >= 100s from instant baseline");
-    let expired = now
-      .checked_sub(Duration::from_secs(700))
-      .expect("now should be >= 700s from instant baseline");
+    let now_fresh = last_used
+      .checked_add(Duration::from_secs(100))
+      .expect("instant should support adding 100s");
+    let now_expired = last_used
+      .checked_add(Duration::from_secs(700))
+      .expect("instant should support adding 700s");
 
-    assert!(!is_cache_entry_expired(fresh, now, ttl));
-    assert!(is_cache_entry_expired(expired, now, ttl));
+    assert!(!is_cache_entry_expired(last_used, now_fresh, ttl));
+    assert!(is_cache_entry_expired(last_used, now_expired, ttl));
   }
 
   #[test]
