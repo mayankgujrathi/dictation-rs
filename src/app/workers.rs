@@ -728,8 +728,12 @@ mod tests {
     let now = Instant::now();
     let ttl = Duration::from_secs(600);
 
-    let fresh = now - Duration::from_secs(100);
-    let expired = now - Duration::from_secs(700);
+    let fresh = now
+      .checked_sub(Duration::from_secs(100))
+      .expect("now should be >= 100s from instant baseline");
+    let expired = now
+      .checked_sub(Duration::from_secs(700))
+      .expect("now should be >= 700s from instant baseline");
 
     assert!(!is_cache_entry_expired(fresh, now, ttl));
     assert!(is_cache_entry_expired(expired, now, ttl));
