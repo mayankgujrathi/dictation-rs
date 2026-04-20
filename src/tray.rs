@@ -9,41 +9,15 @@ use tray_icon::{
   menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
 };
 
-/// Create a simple colored microphone icon for the tray (32x32)
+const TRAY_ICON_PNG: &[u8] = include_bytes!("../assets/activity.png");
+
+/// Create tray icon from an embedded PNG asset.
 pub fn create_tray_icon() -> Icon {
-  let size = 32;
-  let mut buffer = vec![0u8; (size * size * 4) as usize];
-
-  let cx = 16;
-  let cy = 16;
-
-  // Draw filled circle for mic head (bright blue)
-  for y in 8..24 {
-    for x in 10..23 {
-      let dx = (x as f32 - cx as f32 + 0.5) / 6.5;
-      let dy = (y as f32 - cy as f32 + 2.0) / 8.0;
-      if dx * dx + dy * dy <= 1.0 {
-        let idx = ((y * size + x) * 4) as usize;
-        buffer[idx] = 30; // R
-        buffer[idx + 1] = 120; // G
-        buffer[idx + 2] = 220; // B
-        buffer[idx + 3] = 255; // A
-      }
-    }
-  }
-
-  // Draw mic handle (white)
-  for y in 22..29 {
-    for x in 14..19 {
-      let idx = ((y * size + x) * 4) as usize;
-      buffer[idx] = 240;
-      buffer[idx + 1] = 240;
-      buffer[idx + 2] = 250;
-      buffer[idx + 3] = 255;
-    }
-  }
-
-  let icon = Icon::from_rgba(buffer, size, size)
+  let image = image::load_from_memory(TRAY_ICON_PNG)
+    .expect("Failed to decode embedded tray icon PNG")
+    .into_rgba8();
+  let (width, height) = image.dimensions();
+  let icon = Icon::from_rgba(image.into_raw(), width, height)
     .expect("Failed to create icon from rgba");
   debug!("tray icon created");
   icon
@@ -68,7 +42,7 @@ impl TrayManager {
 
     let tray_icon = TrayIconBuilder::new()
       .with_menu(Box::new(menu))
-      .with_tooltip("Dictation - Recording App")
+      .with_tooltip("dictation-rs")
       .with_icon(icon)
       .build()
       .expect("Failed to create tray icon");

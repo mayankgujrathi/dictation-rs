@@ -21,6 +21,12 @@ Turn your voice into ready-to-paste text in seconds with a fast, privacy-friendl
 cargo build --release
 ```
 
+### Windows icon embedding note
+
+- Windows executable icon embedding is handled via `winres` in `build.rs` using `assets/activity.ico`.
+- Local Windows builds should have Visual Studio Build Tools / Windows SDK installed.
+- GitHub Actions Windows workflows (`CI/CD` and `Release`) initialize the MSVC environment via `ilammy/msvc-dev-cmd@v1` before build.
+
 The binary will be created at `target/release/dictation.exe`.
 
 ## Usage
