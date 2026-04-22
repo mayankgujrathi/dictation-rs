@@ -29,6 +29,45 @@ cargo build --release
 
 The binary will be created at `target/release/dictation.exe`.
 
+## CI/CD packaging outputs
+
+GitHub Actions now builds installer/package-style artifacts for each platform:
+
+- **Windows:** `dictation-<version>-windows-installer.exe` (NSIS installer)
+- **Linux:** `dictation-<version>-linux.AppImage`
+- **macOS:** `dictation-<version>-macos.dmg` (drag-and-drop `.app` installer style)
+
+Notes:
+- `release.yml` publishes these as GitHub Release assets for tags.
+- `ci-cd.yml` produces the same artifacts in the workflow artifact `dist/` for branch/PR validation.
+
+## Optional signing/notarization (Phase 2)
+
+The release workflow includes optional, secret-guarded signing steps that activate only when secrets are configured.
+
+### Windows signing secrets
+
+- `WIN_CERT_PFX_BASE64` - Base64-encoded code-signing `.pfx`
+- `WIN_CERT_PASSWORD` - Password for the `.pfx`
+
+### macOS signing/notarization secrets
+
+- `MACOS_CERT_P12_BASE64` - Base64-encoded Developer ID Application cert (`.p12`)
+- `MACOS_CERT_PASSWORD` - Password for cert import
+- `KEYCHAIN_PASSWORD` - Temporary CI keychain password
+- `APPLE_ID` - Apple ID used for notarization
+- `APPLE_APP_SPECIFIC_PASSWORD` - App-specific password for Apple ID
+- `APPLE_TEAM_ID` - Apple Developer Team ID
+
+### Linux authenticity (optional) secrets
+
+- `LINUX_GPG_PRIVATE_KEY` - Base64-encoded GPG private key
+- `LINUX_GPG_PASSPHRASE` - GPG key passphrase
+
+When Linux GPG secrets are present, CI also publishes:
+
+- `dictation-<version>-linux.AppImage.sha256.asc`
+
 ## Usage
 
 1. Start the application:

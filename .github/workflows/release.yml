@@ -19,16 +19,10 @@ jobs:
         include:
           - os: ubuntu-latest
             target: linux
-            bin_name: dictation
-            archive_ext: tar.gz
           - os: macos-latest
             target: macos
-            bin_name: dictation
-            archive_ext: tar.gz
           - os: windows-latest
             target: windows
-            bin_name: dictation.exe
-            archive_ext: zip
 
     steps:
       - name: Checkout
@@ -180,25 +174,191 @@ jobs:
           $feature = "${{ steps.cargo_features.outputs.value }}"
           cargo build --release --locked --no-default-features --features $feature
 
-      - name: Package artifact (Linux/macOS)
-        if: runner.os != 'Windows'
+      - name: Package Linux AppImage
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           mkdir -p dist
-          cp "target/release/${{ matrix.bin_name }}" "dist/${{ matrix.bin_name }}"
-          tar -C dist -czf "dictation-${{ github.ref_name }}-${{ matrix.target }}.tar.gz" "${{ matrix.bin_name }}"
+          APPDIR="dictation.AppDir"
+          VERSION="${{ github.ref_name }}"
 
-      - name: Package artifact (Windows)
+          mkdir -p "${APPDIR}/usr/bin" "${APPDIR}/usr/share/applications" "${APPDIR}/usr/share/icons/hicolor/256x256/apps"
+          cp target/release/dictation "${APPDIR}/usr/bin/dictation"
+          cp assets/activity.png "${APPDIR}/usr/share/icons/hicolor/256x256/apps/dictation.png"
+
+          cat > "${APPDIR}/AppRun" <<'APPRUN'
+          #!/usr/bin/env bash
+          HERE="$(dirname "$(readlink -f "$0")")"
+          exec "$HERE/usr/bin/dictation" "$@"
+          APPRUN
+          chmod +x "${APPDIR}/AppRun"
+
+          cat > "${APPDIR}/dictation.desktop" <<'DESKTOP'
+          [Desktop Entry]
+          Type=Application
+          Name=Dictation
+          Exec=dictation
+          Icon=dictation
+          Categories=Utility;
+          Terminal=false
+          DESKTOP
+          cp "${APPDIR}/dictation.desktop" "${APPDIR}/usr/share/applications/dictation.desktop"
+
+          APPIMAGE_TOOL="appimagetool-x86_64.AppImage"
+          curl -L -o "${APPIMAGE_TOOL}" "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
+          chmod +x "${APPIMAGE_TOOL}"
+          ARCH=x86_64 ./${APPIMAGE_TOOL} --appimage-extract-and-run "${APPDIR}" "dist/dictation-${VERSION}-linux.AppImage"
+          sha256sum "dist/dictation-${VERSION}-linux.AppImage" > "dist/dictation-${VERSION}-linux.AppImage.sha256"
+
+      - name: Package macOS drag-and-drop DMG
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist dmg
+
+          APP_NAME="Dictation"
+          APP_BUNDLE="${APP_NAME}.app"
+          CONTENTS_DIR="${APP_BUNDLE}/Contents"
+          VERSION="${{ github.ref_name }}"
+
+          mkdir -p "${CONTENTS_DIR}/MacOS" "${CONTENTS_DIR}/Resources"
+          cp target/release/dictation "${CONTENTS_DIR}/MacOS/dictation"
+          cp assets/activity.png "${CONTENTS_DIR}/Resources/activity.png"
+          chmod +x "${CONTENTS_DIR}/MacOS/dictation"
+
+          cat > "${CONTENTS_DIR}/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+            <dict>
+              <key>CFBundleName</key><string>Dictation</string>
+              <key>CFBundleDisplayName</key><string>Dictation</string>
+              <key>CFBundleIdentifier</key><string>com.dictation.dictation</string>
+              <key>CFBundleVersion</key><string>1</string>
+              <key>CFBundleShortVersionString</key><string>1.0</string>
+              <key>CFBundleExecutable</key><string>dictation</string>
+              <key>CFBundlePackageType</key><string>APPL</string>
+              <key>LSMinimumSystemVersion</key><string>11.0</string>
+              <key>CFBundleIconFile</key><string>activity.png</string>
+            </dict>
+          </plist>
+          PLIST
+
+          cp -R "${APP_BUNDLE}" dmg/
+          hdiutil create -volname "Dictation" -srcfolder dmg -ov -format UDZO "dist/dictation-${VERSION}-macos.dmg"
+
+      - name: Package Windows installer (NSIS)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item "target/release/${{ matrix.bin_name }}" "dist/${{ matrix.bin_name }}"
-          Compress-Archive -Path "dist/${{ matrix.bin_name }}" -DestinationPath "dictation-${{ github.ref_name }}-${{ matrix.target }}.zip" -Force
+          Copy-Item "target/release/dictation.exe" "dist/dictation.exe"
 
-      - name: Upload release asset
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
+            choco install nsis -y --no-progress
+            $env:PATH = "C:\Program Files (x86)\NSIS;C:\Program Files\NSIS;$env:PATH"
+          }
+
+          @'
+          !define APP_NAME "Dictation"
+          !define APP_EXE "dictation.exe"
+          !define VERSION "${{ github.ref_name }}"
+          OutFile "dictation-${VERSION}-windows-installer.exe"
+          InstallDir "$PROGRAMFILES\Dictation"
+          RequestExecutionLevel user
+          Page directory
+          Page instfiles
+          Section "Install"
+            SetOutPath "$INSTDIR"
+            File "dist\${APP_EXE}"
+            CreateShortcut "$DESKTOP\Dictation.lnk" "$INSTDIR\${APP_EXE}"
+            WriteUninstaller "$INSTDIR\Uninstall.exe"
+          SectionEnd
+          Section "Uninstall"
+            Delete "$DESKTOP\Dictation.lnk"
+            Delete "$INSTDIR\${APP_EXE}"
+            Delete "$INSTDIR\Uninstall.exe"
+            RMDir "$INSTDIR"
+          SectionEnd
+          '@ | Set-Content -Path installer.nsi
+
+          & makensis installer.nsi
+          Move-Item "dictation-${{ github.ref_name }}-windows-installer.exe" "dist/dictation-${{ github.ref_name }}-windows-installer.exe" -Force
+
+      - name: Optional Windows installer signing (Phase 2)
+        if: runner.os == 'Windows' && secrets.WIN_CERT_PFX_BASE64 != '' && secrets.WIN_CERT_PASSWORD != ''
+        shell: pwsh
+        run: |
+          [IO.File]::WriteAllBytes("codesign.pfx", [Convert]::FromBase64String("${{ secrets.WIN_CERT_PFX_BASE64 }}"))
+          $installer = "dist/dictation-${{ github.ref_name }}-windows-installer.exe"
+          signtool sign /f codesign.pfx /p "${{ secrets.WIN_CERT_PASSWORD }}" /tr http://timestamp.digicert.com /td sha256 /fd sha256 $installer
+          signtool verify /pa $installer
+
+      - name: Optional macOS codesign + notarize (Phase 2)
+        if: runner.os == 'macOS' && secrets.MACOS_CERT_P12_BASE64 != '' && secrets.MACOS_CERT_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' && secrets.KEYCHAIN_PASSWORD != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.ref_name }}"
+          APP_PATH="dmg/Dictation.app"
+          DMG_PATH="dist/dictation-${VERSION}-macos.dmg"
+
+          echo "${{ secrets.MACOS_CERT_P12_BASE64 }}" | base64 --decode > signing_cert.p12
+          security create-keychain -p "${{ secrets.KEYCHAIN_PASSWORD }}" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "${{ secrets.KEYCHAIN_PASSWORD }}" build.keychain
+          security import signing_cert.p12 -k build.keychain -P "${{ secrets.MACOS_CERT_PASSWORD }}" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "${{ secrets.KEYCHAIN_PASSWORD }}" build.keychain
+
+          IDENTITY="$(security find-identity -v -p codesigning build.keychain | grep 'Developer ID Application' | head -n1 | sed -E 's/.*\"(.*)\"/\1/')"
+          codesign --deep --force --options runtime --sign "$IDENTITY" "$APP_PATH"
+
+          xcrun notarytool submit "$DMG_PATH" --apple-id "${{ secrets.APPLE_ID }}" --password "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}" --team-id "${{ secrets.APPLE_TEAM_ID }}" --wait
+          xcrun stapler staple "$DMG_PATH"
+
+      - name: Optional Linux checksum + GPG signature (Phase 2)
+        if: runner.os == 'Linux' && secrets.LINUX_GPG_PRIVATE_KEY != '' && secrets.LINUX_GPG_PASSPHRASE != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.ref_name }}"
+          APPIMAGE="dist/dictation-${VERSION}-linux.AppImage"
+          sha256sum "$APPIMAGE" > "${APPIMAGE}.sha256"
+
+          echo "${{ secrets.LINUX_GPG_PRIVATE_KEY }}" | base64 --decode | gpg --batch --import
+          gpg --batch --yes --pinentry-mode loopback --passphrase "${{ secrets.LINUX_GPG_PASSPHRASE }}" \
+            --armor --detach-sign "${APPIMAGE}.sha256"
+
+      - name: Upload Linux release assets
+        if: runner.os == 'Linux'
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dictation-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }}
+            dist/dictation-${{ github.ref_name }}-linux.AppImage
+            dist/dictation-${{ github.ref_name }}-linux.AppImage.sha256
+          generate_release_notes: true
+
+      - name: Upload Linux GPG signature (Phase 2)
+        if: runner.os == 'Linux' && secrets.LINUX_GPG_PRIVATE_KEY != '' && secrets.LINUX_GPG_PASSPHRASE != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/dictation-${{ github.ref_name }}-linux.AppImage.sha256.asc
+          generate_release_notes: true
+
+      - name: Upload Windows release asset
+        if: runner.os == 'Windows'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/dictation-${{ github.ref_name }}-windows-installer.exe
+          generate_release_notes: true
+
+      - name: Upload macOS release asset
+        if: runner.os == 'macOS'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/dictation-${{ github.ref_name }}-macos.dmg
           generate_release_notes: true
