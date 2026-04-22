@@ -238,19 +238,113 @@ jobs:
           $feature = "${{ steps.cargo_features.outputs.value }}"
           cargo build --release --no-default-features --features $feature
 
-      - name: Package artifact (Linux/macOS)
-        if: runner.os != 'Windows'
+      - name: Package Linux AppImage
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           mkdir -p dist
-          cp target/release/dictation dist/dictation
+          APPDIR="dictation.AppDir"
+          VERSION="${{ steps.tag_base.outputs.value }}"
 
-      - name: Package artifact (Windows)
+          rm -rf "${APPDIR}"
+          mkdir -p "${APPDIR}/usr/bin" "${APPDIR}/usr/share/applications" "${APPDIR}/usr/share/icons/hicolor/256x256/apps"
+          cp target/release/dictation "${APPDIR}/usr/bin/dictation"
+          cp assets/activity.png "${APPDIR}/usr/share/icons/hicolor/256x256/apps/dictation.png"
+          cp assets/activity.png "${APPDIR}/dictation.png"
+
+          cat > "${APPDIR}/AppRun" <<'APPRUN'
+          #!/usr/bin/env bash
+          HERE="$(dirname "$(readlink -f "$0")")"
+          exec "$HERE/usr/bin/dictation" "$@"
+          APPRUN
+          chmod +x "${APPDIR}/AppRun"
+
+          cat > "${APPDIR}/dictation.desktop" <<'DESKTOP'
+          [Desktop Entry]
+          Type=Application
+          Name=Dictation
+          Exec=dictation
+          Icon=dictation
+          Categories=Utility;
+          Terminal=false
+          DESKTOP
+          cp "${APPDIR}/dictation.desktop" "${APPDIR}/usr/share/applications/dictation.desktop"
+
+          APPIMAGE_TOOL="appimagetool-x86_64.AppImage"
+          curl -L -o "${APPIMAGE_TOOL}" "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
+          chmod +x "${APPIMAGE_TOOL}"
+          ARCH=x86_64 ./${APPIMAGE_TOOL} --appimage-extract-and-run "${APPDIR}" "dist/dictation-${VERSION}-linux.AppImage"
+
+      - name: Package macOS drag-and-drop DMG
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist dmg
+          VERSION="${{ steps.tag_base.outputs.value }}"
+
+          APP_BUNDLE="Dictation.app"
+          CONTENTS_DIR="${APP_BUNDLE}/Contents"
+          mkdir -p "${CONTENTS_DIR}/MacOS" "${CONTENTS_DIR}/Resources"
+          cp target/release/dictation "${CONTENTS_DIR}/MacOS/dictation"
+          cp assets/activity.png "${CONTENTS_DIR}/Resources/activity.png"
+          chmod +x "${CONTENTS_DIR}/MacOS/dictation"
+
+          cat > "${CONTENTS_DIR}/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+            <dict>
+              <key>CFBundleName</key><string>Dictation</string>
+              <key>CFBundleDisplayName</key><string>Dictation</string>
+              <key>CFBundleIdentifier</key><string>com.dictation.dictation</string>
+              <key>CFBundleVersion</key><string>1</string>
+              <key>CFBundleShortVersionString</key><string>1.0</string>
+              <key>CFBundleExecutable</key><string>dictation</string>
+              <key>CFBundlePackageType</key><string>APPL</string>
+            </dict>
+          </plist>
+          PLIST
+
+          cp -R "${APP_BUNDLE}" dmg/
+          hdiutil create -volname "Dictation" -srcfolder dmg -ov -format UDZO "dist/dictation-${VERSION}-macos.dmg"
+
+      - name: Package Windows installer (NSIS)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item target/release/dictation.exe dist/dictation.exe
+
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
+            choco install nsis -y --no-progress
+            $env:PATH = "C:\Program Files (x86)\NSIS;C:\Program Files\NSIS;$env:PATH"
+          }
+
+          @'
+          !define APP_EXE "dictation.exe"
+          !define VERSION "${{ steps.tag_base.outputs.value }}"
+          OutFile "dictation-${VERSION}-windows-installer.exe"
+          InstallDir "$PROGRAMFILES\Dictation"
+          RequestExecutionLevel user
+          Page directory
+          Page instfiles
+          Section "Install"
+            SetOutPath "$INSTDIR"
+            File "dist\${APP_EXE}"
+            CreateShortcut "$DESKTOP\Dictation.lnk" "$INSTDIR\${APP_EXE}"
+            WriteUninstaller "$INSTDIR\Uninstall.exe"
+          SectionEnd
+          Section "Uninstall"
+            Delete "$DESKTOP\Dictation.lnk"
+            Delete "$INSTDIR\${APP_EXE}"
+            Delete "$INSTDIR\Uninstall.exe"
+            RMDir "$INSTDIR"
+          SectionEnd
+          '@ | Set-Content -Path installer.nsi
+
+          & makensis installer.nsi
+          Move-Item "dictation-${{ steps.tag_base.outputs.value }}-windows-installer.exe" "dist/dictation-${{ steps.tag_base.outputs.value }}-windows-installer.exe" -Force
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
