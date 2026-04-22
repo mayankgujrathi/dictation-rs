@@ -182,9 +182,11 @@ jobs:
           APPDIR="dictation.AppDir"
           VERSION="${{ github.ref_name }}"
 
+          rm -rf "${APPDIR}"
           mkdir -p "${APPDIR}/usr/bin" "${APPDIR}/usr/share/applications" "${APPDIR}/usr/share/icons/hicolor/256x256/apps"
           cp target/release/dictation "${APPDIR}/usr/bin/dictation"
           cp assets/activity.png "${APPDIR}/usr/share/icons/hicolor/256x256/apps/dictation.png"
+          cp assets/activity.png "${APPDIR}/dictation.png"
 
           cat > "${APPDIR}/AppRun" <<'APPRUN'
           #!/usr/bin/env bash
