@@ -13,7 +13,7 @@ Turn your voice into ready-to-paste text in seconds with a fast, privacy-friendl
 ## Requirements
 
 - Rust (latest stable)
-- A working microphone
+- A working microphone (uses system default mic)
 
 ## Building
 
