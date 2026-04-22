@@ -13,6 +13,17 @@ jobs:
   build-and-release:
     name: Release Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    env:
+      WIN_CERT_PFX_BASE64: ${{ secrets.WIN_CERT_PFX_BASE64 }}
+      WIN_CERT_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
+      MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+      MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      LINUX_GPG_PRIVATE_KEY: ${{ secrets.LINUX_GPG_PRIVATE_KEY }}
+      LINUX_GPG_PASSPHRASE: ${{ secrets.LINUX_GPG_PASSPHRASE }}
     strategy:
       fail-fast: false
       matrix:
@@ -289,7 +300,7 @@ jobs:
           Move-Item "dictation-${{ github.ref_name }}-windows-installer.exe" "dist/dictation-${{ github.ref_name }}-windows-installer.exe" -Force
 
       - name: Optional Windows installer signing (Phase 2)
-        if: runner.os == 'Windows' && secrets.WIN_CERT_PFX_BASE64 != '' && secrets.WIN_CERT_PASSWORD != ''
+        if: runner.os == 'Windows' && env.WIN_CERT_PFX_BASE64 != '' && env.WIN_CERT_PASSWORD != ''
         shell: pwsh
         run: |
           [IO.File]::WriteAllBytes("codesign.pfx", [Convert]::FromBase64String("${{ secrets.WIN_CERT_PFX_BASE64 }}"))
@@ -298,7 +309,7 @@ jobs:
           signtool verify /pa $installer
 
       - name: Optional macOS codesign + notarize (Phase 2)
-        if: runner.os == 'macOS' && secrets.MACOS_CERT_P12_BASE64 != '' && secrets.MACOS_CERT_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' && secrets.KEYCHAIN_PASSWORD != ''
+        if: runner.os == 'macOS' && env.MACOS_CERT_P12_BASE64 != '' && env.MACOS_CERT_PASSWORD != '' && env.APPLE_ID != '' && env.APPLE_APP_SPECIFIC_PASSWORD != '' && env.APPLE_TEAM_ID != '' && env.KEYCHAIN_PASSWORD != ''
         shell: bash
         run: |
           set -euo pipefail
@@ -320,7 +331,7 @@ jobs:
           xcrun stapler staple "$DMG_PATH"
 
       - name: Optional Linux checksum + GPG signature (Phase 2)
-        if: runner.os == 'Linux' && secrets.LINUX_GPG_PRIVATE_KEY != '' && secrets.LINUX_GPG_PASSPHRASE != ''
+        if: runner.os == 'Linux' && env.LINUX_GPG_PRIVATE_KEY != '' && env.LINUX_GPG_PASSPHRASE != ''
         shell: bash
         run: |
           set -euo pipefail
@@ -342,7 +353,7 @@ jobs:
           generate_release_notes: true
 
       - name: Upload Linux GPG signature (Phase 2)
-        if: runner.os == 'Linux' && secrets.LINUX_GPG_PRIVATE_KEY != '' && secrets.LINUX_GPG_PASSPHRASE != ''
+        if: runner.os == 'Linux' && env.LINUX_GPG_PRIVATE_KEY != '' && env.LINUX_GPG_PASSPHRASE != ''
         uses: softprops/action-gh-release@v2
         with:
           files: |
