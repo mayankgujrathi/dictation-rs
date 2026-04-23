@@ -278,17 +278,21 @@ jobs:
           !define APP_EXE "dictation.exe"
           !define VERSION "${{ github.ref_name }}"
           OutFile "dictation-${VERSION}-windows-installer.exe"
-          InstallDir "$PROGRAMFILES\Dictation"
+          InstallDir "$LOCALAPPDATA\Programs\Dictation"
           RequestExecutionLevel user
           Page directory
           Page instfiles
           Section "Install"
             SetOutPath "$INSTDIR"
             File "dist\${APP_EXE}"
+            CreateDirectory "$SMPROGRAMS\${APP_NAME}"
+            CreateShortcut "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}"
             CreateShortcut "$DESKTOP\Dictation.lnk" "$INSTDIR\${APP_EXE}"
             WriteUninstaller "$INSTDIR\Uninstall.exe"
           SectionEnd
           Section "Uninstall"
+            Delete "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk"
+            RMDir "$SMPROGRAMS\${APP_NAME}"
             Delete "$DESKTOP\Dictation.lnk"
             Delete "$INSTDIR\${APP_EXE}"
             Delete "$INSTDIR\Uninstall.exe"
