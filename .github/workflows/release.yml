@@ -237,8 +237,20 @@ jobs:
 
           mkdir -p "${CONTENTS_DIR}/MacOS" "${CONTENTS_DIR}/Resources"
           cp target/release/dictation "${CONTENTS_DIR}/MacOS/dictation"
-          cp assets/activity.png "${CONTENTS_DIR}/Resources/activity.png"
           chmod +x "${CONTENTS_DIR}/MacOS/dictation"
+
+          mkdir -p icon.iconset
+          sips -z 16 16   assets/activity.png --out icon.iconset/icon_16x16.png
+          sips -z 32 32   assets/activity.png --out icon.iconset/icon_16x16@2x.png
+          sips -z 32 32   assets/activity.png --out icon.iconset/icon_32x32.png
+          sips -z 64 64   assets/activity.png --out icon.iconset/icon_32x32@2x.png
+          sips -z 128 128 assets/activity.png --out icon.iconset/icon_128x128.png
+          sips -z 256 256 assets/activity.png --out icon.iconset/icon_128x128@2x.png
+          sips -z 256 256 assets/activity.png --out icon.iconset/icon_256x256.png
+          sips -z 512 512 assets/activity.png --out icon.iconset/icon_256x256@2x.png
+          sips -z 512 512 assets/activity.png --out icon.iconset/icon_512x512.png
+          sips -z 1024 1024 assets/activity.png --out icon.iconset/icon_512x512@2x.png
+          iconutil -c icns icon.iconset -o "${CONTENTS_DIR}/Resources/activity.icns"
 
           cat > "${CONTENTS_DIR}/Info.plist" <<'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
@@ -253,7 +265,7 @@ jobs:
               <key>CFBundleExecutable</key><string>dictation</string>
               <key>CFBundlePackageType</key><string>APPL</string>
               <key>LSMinimumSystemVersion</key><string>11.0</string>
-              <key>CFBundleIconFile</key><string>activity.png</string>
+              <key>CFBundleIconFile</key><string>activity.icns</string>
             </dict>
           </plist>
           PLIST
@@ -267,6 +279,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item "target/release/dictation.exe" "dist/dictation.exe"
+          Copy-Item "assets/activity.ico" "dist/activity.ico"
 
           if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
             choco install nsis -y --no-progress
@@ -277,26 +290,53 @@ jobs:
           !define APP_NAME "Dictation"
           !define APP_EXE "dictation.exe"
           !define VERSION "${{ github.ref_name }}"
+          Name "${APP_NAME}"
           OutFile "dictation-${VERSION}-windows-installer.exe"
           InstallDir "$LOCALAPPDATA\Programs\Dictation"
+          InstallDirRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "InstallLocation"
+          Icon "dist\activity.ico"
+          UninstallIcon "dist\activity.ico"
           RequestExecutionLevel user
           Page directory
           Page instfiles
           Section "Install"
+            SetShellVarContext current
             SetOutPath "$INSTDIR"
             File "dist\${APP_EXE}"
+            File "dist\activity.ico"
             CreateDirectory "$SMPROGRAMS\${APP_NAME}"
-            CreateShortcut "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}"
-            CreateShortcut "$DESKTOP\Dictation.lnk" "$INSTDIR\${APP_EXE}"
+            CreateShortcut "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\activity.ico" 0
+            CreateShortcut "$DESKTOP\Dictation.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\activity.ico" 0
             WriteUninstaller "$INSTDIR\Uninstall.exe"
+
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayName" "${APP_NAME}"
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayVersion" "${VERSION}"
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "Publisher" "dictation-rs"
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "InstallLocation" "$INSTDIR"
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayIcon" "$INSTDIR\activity.ico,0"
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "UninstallString" '"$INSTDIR\Uninstall.exe"'
+            WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "NoModify" 1
+            WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "NoRepair" 1
           SectionEnd
           Section "Uninstall"
+            SetShellVarContext current
+            ExecWait '"$SYSDIR\taskkill.exe" /IM ${APP_EXE} /T /F'
+            Sleep 500
+
             Delete "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk"
             RMDir "$SMPROGRAMS\${APP_NAME}"
             Delete "$DESKTOP\Dictation.lnk"
             Delete "$INSTDIR\${APP_EXE}"
+            Delete "$INSTDIR\activity.ico"
             Delete "$INSTDIR\Uninstall.exe"
             RMDir "$INSTDIR"
+
+            DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
+
+            MessageBox MB_ICONQUESTION|MB_YESNO "Do you also want to delete user data at $APPDATA\\dictation\\dictation?" IDNO keep_user_data
+              RMDir /r "$APPDATA\dictation\dictation"
+              RMDir "$APPDATA\dictation"
+            keep_user_data:
           SectionEnd
           '@ | Set-Content -Path installer.nsi
 
