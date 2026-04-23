@@ -343,13 +343,13 @@ jobs:
           OutFile "dictation-${VERSION}-windows-installer.exe"
           InstallDir "$LOCALAPPDATA\Programs\Dictation"
           InstallDirRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "InstallLocation"
-          SetShellVarContext current
           Icon "dist\activity.ico"
           UninstallIcon "dist\activity.ico"
           RequestExecutionLevel user
           Page directory
           Page instfiles
           Section "Install"
+            SetShellVarContext current
             SetOutPath "$INSTDIR"
             File "dist\${APP_EXE}"
             File "dist\activity.ico"
@@ -368,6 +368,7 @@ jobs:
             WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "NoRepair" 1
           SectionEnd
           Section "Uninstall"
+            SetShellVarContext current
             ExecWait '"$SYSDIR\taskkill.exe" /IM ${APP_EXE} /T /F'
             Sleep 500
 
