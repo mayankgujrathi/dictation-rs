@@ -28,6 +28,12 @@ use transcribe_rs::{OrtAccelerator, set_ort_accelerator};
 
 use super::VoiceApp;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 const MODEL_DIR_NAME: &str = "parakeet-tdt-0.6b-v3-int8";
 const MODEL_FILES: [&str; 4] = [
   "encoder-model.int8.onnx",
@@ -386,6 +392,7 @@ fn identify_active_application_windows(
 
   let output = Command::new("powershell")
     .args(["-NoProfile", "-Command", ps_script.as_str()])
+    .creation_flags(CREATE_NO_WINDOW)
     .output();
 
   parse_app_metadata_from_tsv_output(output)
