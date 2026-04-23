@@ -37,17 +37,6 @@ fn main() -> eframe::Result<()> {
     return Ok(());
   }
 
-  let runtime = tokio::runtime::Builder::new_multi_thread()
-    .enable_all()
-    .thread_name("dictation-worker")
-    .worker_threads(4)
-    .max_blocking_threads(4)
-    .build()
-    .expect("Failed to build Tokio runtime");
-  info!("tokio runtime initialized");
-
-  let _guard = runtime.enter();
-
   // Shared exit flag
   let should_exit = Arc::new(AtomicBool::new(false));
 
@@ -60,10 +49,18 @@ fn main() -> eframe::Result<()> {
   debug!("tray polling thread spawned");
 
   let should_exit_for_settings = should_exit.clone();
-  let _settings_refresh_handle = runtime.spawn(async move {
+  let settings_refresh_interval_secs =
+    std::env::var("DICTATION_SETTINGS_REFRESH_SECS")
+      .ok()
+      .and_then(|v| v.parse::<u64>().ok())
+      .unwrap_or(5)
+      .max(5);
+  let _settings_refresh_handle = std::thread::spawn(move || {
     while !should_exit_for_settings.load(Ordering::SeqCst) {
       logging::apply_runtime_logging_settings();
-      tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+      std::thread::sleep(std::time::Duration::from_secs(
+        settings_refresh_interval_secs,
+      ));
     }
   });
 
@@ -80,7 +77,25 @@ fn main() -> eframe::Result<()> {
   let recording_state_clone = recording_state.clone();
   let should_exit_clone = should_exit.clone();
 
-  let _keyboard_handle = runtime.spawn_blocking(move || {
+  let disable_hotkey_listener =
+    std::env::var("DICTATION_DISABLE_HOTKEY_LISTENER")
+      .ok()
+      .map(|v| {
+        matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes")
+      })
+      .unwrap_or(false);
+
+  let _keyboard_handle = std::thread::spawn(move || {
+    if disable_hotkey_listener {
+      warn!(
+        "global keyboard listener disabled by DICTATION_DISABLE_HOTKEY_LISTENER"
+      );
+      while !should_exit_clone.load(Ordering::SeqCst) {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+      }
+      return;
+    }
+
     debug!("global keyboard listener thread started");
     let mut hotkey_was_pressed = false;
     let mut modifier_pressed = false;
@@ -115,6 +130,7 @@ fn main() -> eframe::Result<()> {
         if modifier_pressed && is_trigger_key(key) && !hotkey_was_pressed {
           hotkey_was_pressed = true;
           info!("recording hotkey trigger received");
+          app::wake_ui();
 
           if !app::is_model_ready() {
             warn!("hotkey ignored because speech model is not ready");
@@ -174,9 +190,6 @@ fn main() -> eframe::Result<()> {
     }),
   );
 
-  // Shutdown runtime with a timeout to ensure clean exit
-  runtime.shutdown_timeout(std::time::Duration::from_millis(500));
-  info!("runtime shutdown completed");
   logging::enforce_app_log_retention();
 
   result

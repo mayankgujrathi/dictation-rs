@@ -2,12 +2,15 @@ use std::sync::{
   Arc,
   atomic::{AtomicBool, Ordering},
 };
+use std::time::Duration;
 
 use tracing::{debug, info};
 use tray_icon::{
   Icon, TrayIcon, TrayIconBuilder,
   menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
 };
+
+use crate::app;
 
 const TRAY_ICON_PNG: &[u8] = include_bytes!("../assets/activity.png");
 
@@ -68,22 +71,21 @@ impl TrayManager {
 pub fn spawn_poll_thread(exit_requested: Arc<AtomicBool>) {
   std::thread::spawn(move || {
     debug!("tray polling thread started");
+    let menu_receiver = MenuEvent::receiver();
     loop {
       if exit_requested.load(Ordering::SeqCst) {
         info!("tray polling thread exiting due to app exit flag");
         break;
       }
 
-      let menu_receiver = MenuEvent::receiver();
-      if let Ok(event) = menu_receiver.try_recv()
+      if let Ok(event) = menu_receiver.recv_timeout(Duration::from_millis(1000))
         && event.id.as_ref() == "exit"
       {
         info!("tray exit command received");
         exit_requested.store(true, Ordering::SeqCst);
+        app::wake_ui();
         break;
       }
-
-      std::thread::sleep(std::time::Duration::from_millis(100));
     }
   });
 }

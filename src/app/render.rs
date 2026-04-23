@@ -7,14 +7,28 @@ use tracing::{debug, info, warn};
 use super::{HISTORY_LEN, UIState, VoiceApp, WINDOW_INNER_SIZE};
 
 impl VoiceApp {
+  fn set_viewport_state(
+    &mut self,
+    ctx: &egui::Context,
+    visible: bool,
+    size: [f32; 2],
+  ) {
+    if self.viewport_visible != visible {
+      ctx.send_viewport_cmd(egui::ViewportCommand::Visible(visible));
+      self.viewport_visible = visible;
+    }
+    if self.viewport_size != size {
+      ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
+        size[0], size[1],
+      )));
+      self.viewport_size = size;
+    }
+  }
+
   fn enter_idle_mode(&mut self, ctx: &egui::Context) {
     // Keep viewport/event loop alive (for hotkey + tray exit responsiveness),
     // but make UI effectively non-intrusive and low-cost.
-    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
-    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
-      1.0, 1.0,
-    )));
-    ctx.request_repaint_after(Duration::from_millis(150));
+    self.set_viewport_state(ctx, true, [1.0, 1.0]);
     debug!("entered idle mode");
   }
 
@@ -33,11 +47,7 @@ impl VoiceApp {
     ctx: &egui::Context,
     my_frame: egui::Frame,
   ) {
-    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
-    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
-      WINDOW_INNER_SIZE[0],
-      WINDOW_INNER_SIZE[1],
-    )));
+    self.set_viewport_state(ctx, true, WINDOW_INNER_SIZE);
     self.spawn_model_download_worker_if_needed();
 
     let progress_raw = self.download_progress_atomic.load(Ordering::Relaxed);
@@ -95,11 +105,7 @@ impl VoiceApp {
     let actively_recording = is_recording && mic_ready;
 
     if actively_recording {
-      ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
-      ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
-        WINDOW_INNER_SIZE[0],
-        WINDOW_INNER_SIZE[1],
-      )));
+      self.set_viewport_state(ctx, true, WINDOW_INNER_SIZE);
       ctx.request_repaint();
       self.saw_recording_active = true;
     }
@@ -163,10 +169,7 @@ impl VoiceApp {
     ctx: &egui::Context,
     my_frame: egui::Frame,
   ) {
-    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
-    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
-      100.0, 40.0,
-    )));
+    self.set_viewport_state(ctx, true, [100.0, 40.0]);
     self.spawn_transcription_worker_if_needed();
 
     let status_opt =
@@ -233,6 +236,8 @@ impl eframe::App for VoiceApp {
   }
 
   fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    super::register_ui_context(ctx);
+
     if self.should_exit.load(Ordering::SeqCst) {
       info!("app exit requested; closing viewport");
       ctx.send_viewport_cmd(egui::ViewportCommand::Close);

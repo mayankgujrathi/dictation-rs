@@ -4,6 +4,8 @@ use std::sync::{
   atomic::{AtomicBool, AtomicU32},
 };
 use std::time::Instant;
+
+use eframe::egui;
 use tracing::info;
 
 mod constants;
@@ -17,6 +19,9 @@ pub use constants::{
   DEFAULT_LLM_SYSTEM_PROMPT, HISTORY_LEN, WINDOW_INNER_SIZE,
 };
 pub use state::UIState;
+
+static UI_CONTEXT: std::sync::OnceLock<egui::Context> =
+  std::sync::OnceLock::new();
 
 #[cfg(test)]
 pub(crate) static TEST_CWD_LOCK: std::sync::Mutex<()> =
@@ -37,6 +42,8 @@ pub struct VoiceApp {
   pub(crate) transcription_status: Arc<Mutex<Option<bool>>>,
   pub(crate) transcription_spawned: bool,
   pub(crate) transcription_rendered_at: Option<Instant>,
+  pub(crate) viewport_visible: bool,
+  pub(crate) viewport_size: [f32; 2],
 }
 
 impl VoiceApp {
@@ -69,7 +76,19 @@ impl VoiceApp {
       transcription_status: Arc::new(Mutex::new(None)),
       transcription_spawned: false,
       transcription_rendered_at: None,
+      viewport_visible: false,
+      viewport_size: [0.0, 0.0],
     }
+  }
+}
+
+pub fn register_ui_context(ctx: &egui::Context) {
+  let _ = UI_CONTEXT.set(ctx.clone());
+}
+
+pub fn wake_ui() {
+  if let Some(ctx) = UI_CONTEXT.get() {
+    ctx.request_repaint();
   }
 }
 

@@ -8,6 +8,8 @@ use directories::ProjectDirs;
 use hound::{WavReader, WavSpec, WavWriter};
 use tracing::{debug, error, info, warn};
 
+use crate::app;
+
 const TARGET_RMS: f32 = 0.12;
 const MIN_GAIN: f32 = 0.8;
 const MAX_GAIN: f32 = 6.0;
@@ -293,6 +295,7 @@ impl RecordingState {
           state
             .mic_ready
             .store(false, std::sync::atomic::Ordering::SeqCst);
+          app::wake_ui();
           return;
         }
       };
@@ -307,6 +310,7 @@ impl RecordingState {
           state
             .mic_ready
             .store(false, std::sync::atomic::Ordering::SeqCst);
+          app::wake_ui();
           return;
         }
       };
@@ -334,6 +338,7 @@ impl RecordingState {
           state
             .is_recording
             .store(false, std::sync::atomic::Ordering::SeqCst);
+          app::wake_ui();
           return;
         }
       };
@@ -395,6 +400,7 @@ impl RecordingState {
           state
             .mic_ready
             .store(false, std::sync::atomic::Ordering::SeqCst);
+          app::wake_ui();
           return;
         }
       };
@@ -407,12 +413,14 @@ impl RecordingState {
         state
           .mic_ready
           .store(false, std::sync::atomic::Ordering::SeqCst);
+        app::wake_ui();
         return;
       }
 
       state
         .mic_ready
         .store(true, std::sync::atomic::Ordering::SeqCst);
+      app::wake_ui();
       info!("microphone stream is active");
 
       // Wait for recording to be stopped
@@ -452,6 +460,7 @@ impl RecordingState {
       state
         .recording_ready
         .store(true, std::sync::atomic::Ordering::SeqCst);
+      app::wake_ui();
       info!("recording cycle finalized and ready for transcription");
     });
   }
