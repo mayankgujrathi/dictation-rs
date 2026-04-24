@@ -2,7 +2,7 @@
 use std::path::Path;
 use std::process::Command;
 use std::sync::{
-  Arc, Mutex, OnceLock,
+  Arc, Condvar, Mutex, OnceLock,
   atomic::{AtomicU32, Ordering},
 };
 use std::time::{Duration, Instant};
@@ -48,6 +48,12 @@ struct CachedParakeetModel {
   last_used_at: Instant,
 }
 
+#[derive(Debug, Default)]
+struct ModelUnloadScheduleState {
+  generation: u64,
+  deadline: Option<Instant>,
+}
+
 #[derive(Debug, Clone, Default)]
 struct ActiveApplicationInfo {
   window_title: String,
@@ -57,9 +63,130 @@ struct ActiveApplicationInfo {
 
 static MODEL_CACHE: OnceLock<Mutex<Option<CachedParakeetModel>>> =
   OnceLock::new();
+static MODEL_UNLOAD_SCHEDULER: OnceLock<
+  Arc<(Mutex<ModelUnloadScheduleState>, Condvar)>,
+> = OnceLock::new();
 
 fn model_cache() -> &'static Mutex<Option<CachedParakeetModel>> {
   MODEL_CACHE.get_or_init(|| Mutex::new(None))
+}
+
+fn model_unload_scheduler()
+-> &'static Arc<(Mutex<ModelUnloadScheduleState>, Condvar)> {
+  MODEL_UNLOAD_SCHEDULER.get_or_init(|| {
+    let scheduler = Arc::new((
+      Mutex::new(ModelUnloadScheduleState::default()),
+      Condvar::new(),
+    ));
+    let worker_scheduler = Arc::clone(&scheduler);
+    std::thread::spawn(move || run_model_unload_scheduler(worker_scheduler));
+    scheduler
+  })
+}
+
+fn apply_unload_schedule(
+  state: &mut ModelUnloadScheduleState,
+  now: Instant,
+  ttl: Duration,
+) -> u64 {
+  state.generation = state.generation.wrapping_add(1);
+  state.deadline = now.checked_add(ttl).or(Some(now));
+  state.generation
+}
+
+fn schedule_model_cache_unload_timeout() {
+  let ttl = model_cache_ttl();
+  let scheduler = model_unload_scheduler();
+  let (state_lock, wake_signal) = &**scheduler;
+
+  let mut state = match state_lock.lock() {
+    Ok(g) => g,
+    Err(e) => e.into_inner(),
+  };
+  let generation = apply_unload_schedule(&mut state, Instant::now(), ttl);
+  wake_signal.notify_one();
+
+  debug!(
+    generation,
+    ttl_secs = ttl.as_secs(),
+    "scheduled transcription model cache unload timeout"
+  );
+}
+
+fn run_model_unload_scheduler(
+  scheduler: Arc<(Mutex<ModelUnloadScheduleState>, Condvar)>,
+) {
+  let (state_lock, wake_signal) = &*scheduler;
+
+  loop {
+    let mut state = match state_lock.lock() {
+      Ok(g) => g,
+      Err(e) => e.into_inner(),
+    };
+
+    while state.deadline.is_none() {
+      state = match wake_signal.wait(state) {
+        Ok(g) => g,
+        Err(e) => e.into_inner(),
+      };
+    }
+
+    let scheduled_generation = state.generation;
+    let deadline = state.deadline;
+    let Some(deadline) = deadline else {
+      continue;
+    };
+
+    let now = Instant::now();
+    if now < deadline {
+      let wait_for = deadline.saturating_duration_since(now);
+      let (next_state, wait_result) =
+        match wake_signal.wait_timeout(state, wait_for) {
+          Ok(v) => v,
+          Err(e) => e.into_inner(),
+        };
+      state = next_state;
+
+      if !wait_result.timed_out() {
+        continue;
+      }
+
+      if state.generation != scheduled_generation
+        || state.deadline != Some(deadline)
+      {
+        debug!(
+          scheduled_generation,
+          current_generation = state.generation,
+          "model unload timeout superseded by a newer schedule"
+        );
+        continue;
+      }
+    }
+
+    if state.generation != scheduled_generation
+      || state.deadline != Some(deadline)
+    {
+      continue;
+    }
+
+    state.deadline = None;
+
+    let mut cache_guard = match model_cache().lock() {
+      Ok(g) => g,
+      Err(e) => e.into_inner(),
+    };
+    if cache_guard.take().is_some() {
+      info!(
+        generation = scheduled_generation,
+        "transcription model unloaded after cache timeout"
+      );
+    } else {
+      debug!(
+        generation = scheduled_generation,
+        "model unload timeout reached but cache was already empty"
+      );
+    }
+  }
 }
 
 fn model_cache_ttl() -> Duration {
@@ -192,10 +319,22 @@ fn transcribe_call() -> Result<(), ()> {
     error!("model cache unexpectedly empty after load/check");
     return Err(());
   };
+  entry.last_used_at = Instant::now();
+  drop(cache_guard);
+  schedule_model_cache_unload_timeout();
+
   let samples =
     transcribe_rs::audio::read_wav_samples(&recording_output_path());
   let Ok(samples) = samples else {
     error!(error = ?samples.err(), "unable to load recording file");
+    return Err(());
+  };
+  let mut cache_guard = match cache.lock() {
+    Ok(g) => g,
+    Err(e) => e.into_inner(),
+  };
+  let Some(entry) = cache_guard.as_mut() else {
+    error!("model cache unexpectedly empty before transcription");
     return Err(());
   };
   let result = entry.model.transcribe_with(
@@ -751,6 +890,27 @@ mod tests {
     unsafe { std::env::set_var("DICTATION_MODEL_CACHE_TTL_SECS", "5") };
     assert_eq!(model_cache_ttl(), Duration::from_secs(5));
     unsafe { std::env::remove_var("DICTATION_MODEL_CACHE_TTL_SECS") };
+  }
+
+  #[test]
+  fn test_apply_unload_schedule_increments_generation_and_sets_deadline() {
+    let now = Instant::now();
+    let ttl = Duration::from_secs(10);
+    let mut state = ModelUnloadScheduleState::default();
+
+    let gen1 = apply_unload_schedule(&mut state, now, ttl);
+    let first_deadline = state.deadline;
+    assert_eq!(gen1, 1);
+    assert!(first_deadline.is_some());
+
+    let gen2 = apply_unload_schedule(
+      &mut state,
+      now.checked_add(Duration::from_secs(3)).unwrap_or(now),
+      ttl,
+    );
+    assert_eq!(gen2, 2);
+    assert!(state.deadline.is_some());
+    assert_ne!(state.deadline, first_deadline);
   }
 
   #[test]
