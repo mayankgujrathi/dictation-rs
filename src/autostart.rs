@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use crate::settings;
 
+#[cfg(target_os = "windows")]
 const AUTOSTART_VALUE_NAME: &str = "dictation-rs";
 
 pub fn sync_from_settings() -> Result<(), String> {
