@@ -38,6 +38,7 @@ async-openai = "0.26"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_Shell"] }
 
 [build-dependencies]
 winres = "0.1"

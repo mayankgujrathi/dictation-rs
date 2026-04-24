@@ -1418,6 +1418,7 @@ dependencies = [
  "tracing-subscriber",
  "transcribe-rs",
  "tray-icon",
+ "windows-sys 0.59.0",
  "winit 0.30.13",
  "winreg",
  "winres",

@@ -4,7 +4,7 @@ use std::sync::{
 };
 use std::time::Duration;
 
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 use tray_icon::{
   Icon, TrayIcon, TrayIconBuilder,
   menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
@@ -13,6 +13,72 @@ use tray_icon::{
 use crate::app;
 
 const TRAY_ICON_PNG: &[u8] = include_bytes!("../assets/activity.png");
+const ABOUT_URL: &str = "https://github.com/mayankgujrathi/dictation-rs";
+
+#[cfg(target_os = "windows")]
+fn open_about_url() -> Result<(), String> {
+  use windows_sys::Win32::Foundation::HWND;
+  use windows_sys::Win32::UI::Shell::ShellExecuteW;
+
+  fn to_wide(s: &str) -> Vec<u16> {
+    s.encode_utf16().chain(std::iter::once(0)).collect()
+  }
+
+  let operation = to_wide("open");
+  let url = to_wide(ABOUT_URL);
+
+  // SAFETY: pointers are valid NUL-terminated UTF-16 buffers for duration of call.
+  let result = unsafe {
+    ShellExecuteW(
+      std::ptr::null_mut::<core::ffi::c_void>() as HWND,
+      operation.as_ptr(),
+      url.as_ptr(),
+      std::ptr::null(),
+      std::ptr::null(),
+      1,
+    )
+  };
+
+  if result as usize <= 32 {
+    Err(format!(
+      "ShellExecuteW failed with code {}",
+      result as usize
+    ))
+  } else {
+    Ok(())
+  }
+}
+
+#[cfg(target_os = "macos")]
+fn open_about_url() -> Result<(), String> {
+  std::process::Command::new("open")
+    .arg(ABOUT_URL)
+    .stdout(std::process::Stdio::null())
+    .stderr(std::process::Stdio::null())
+    .spawn()
+    .map(|_| ())
+    .map_err(|e| format!("open URL failed: {e}"))
+}
+
+#[cfg(target_os = "linux")]
+fn open_about_url() -> Result<(), String> {
+  std::process::Command::new("xdg-open")
+    .arg(ABOUT_URL)
+    .stdout(std::process::Stdio::null())
+    .stderr(std::process::Stdio::null())
+    .spawn()
+    .map(|_| ())
+    .map_err(|e| format!("xdg-open URL failed: {e}"))
+}
+
+#[cfg(not(any(
+  target_os = "windows",
+  target_os = "macos",
+  target_os = "linux"
+)))]
+fn open_about_url() -> Result<(), String> {
+  Err("about URL open not supported on this OS".to_string())
+}
 
 /// Create tray icon from an embedded PNG asset.
 pub fn create_tray_icon() -> Icon {
@@ -79,12 +145,21 @@ pub fn spawn_poll_thread(exit_requested: Arc<AtomicBool>) {
       }
 
       if let Ok(event) = menu_receiver.recv_timeout(Duration::from_millis(1000))
-        && event.id.as_ref() == "exit"
       {
-        info!("tray exit command received");
-        exit_requested.store(true, Ordering::SeqCst);
-        app::wake_ui();
-        break;
+        match event.id.as_ref() {
+          "exit" => {
+            info!("tray exit command received");
+            exit_requested.store(true, Ordering::SeqCst);
+            app::wake_ui();
+            break;
+          }
+          "about" => {
+            if let Err(e) = open_about_url() {
+              warn!(error = %e, "failed to open about URL");
+            }
+          }
+          _ => {}
+        }
       }
     }
   });
