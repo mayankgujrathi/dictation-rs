@@ -128,6 +128,7 @@ Example:
 
 ```json
 {
+  "start_on_login": false,
   "logging": {
     "app_log_max_lines": 1000,
     "trace_file_limit": 100,
@@ -145,6 +146,8 @@ Example:
   }
 }
 ```
+
+`start_on_login` controls whether the app registers itself to auto-start at user login.
 
 `transcript_reformatting_level` controls post-processing behavior:
 - `none` (default): skip model call, return normalized transcript as-is

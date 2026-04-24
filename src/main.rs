@@ -5,6 +5,7 @@
 
 mod app;
 mod audio;
+mod autostart;
 mod llm;
 mod logging;
 mod settings;
@@ -28,6 +29,10 @@ fn main() -> eframe::Result<()> {
       .write_all(format!("Failed to initialize logging: {e}\n").as_bytes());
   }
   info!("application startup initiated");
+
+  if let Err(e) = autostart::sync_from_settings() {
+    warn!(error = %e, "failed to sync autostart from settings");
+  }
 
   // Prevent launching multiple app instances.
   let instance = SingleInstance::new("dictation-rs-single-instance")

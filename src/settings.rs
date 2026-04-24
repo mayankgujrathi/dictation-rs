@@ -23,6 +23,7 @@ pub enum TranscriptReformattingLevel {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(default)]
 pub struct AppSettings {
+  pub start_on_login: bool,
   pub logging: LoggingSettings,
   pub transcription: TranscriptionSettings,
 }
