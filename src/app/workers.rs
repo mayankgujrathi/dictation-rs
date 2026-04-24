@@ -27,6 +27,7 @@ use transcribe_rs::onnx::parakeet::{
 use transcribe_rs::{OrtAccelerator, set_ort_accelerator};
 
 use super::VoiceApp;
+use crate::app::DEFAULT_LLM_SYSTEM_PROMPT;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -648,7 +649,7 @@ fn post_process_transcript(
     base_url: cfg.llm_base_url,
     model_name: cfg.llm_model_name,
     custom_prompt: cfg.llm_custom_prompt,
-    system_prompt: cfg.llm_system_prompt,
+    system_prompt: DEFAULT_LLM_SYSTEM_PROMPT.to_owned(),
     reformatting_level: reformatting_level_label(reformatting_level).to_owned(),
   };
   let app_context = LlmAppContext {

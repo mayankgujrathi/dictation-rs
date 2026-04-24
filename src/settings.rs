@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::app::{
   DEFAULT_LLM_BASE_URL, DEFAULT_LLM_CUSTOM_PROMPT, DEFAULT_LLM_MODEL_NAME,
-  DEFAULT_LLM_SYSTEM_PROMPT,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -47,7 +46,6 @@ pub struct TranscriptionSettings {
   pub llm_base_url: String,
   pub llm_model_name: String,
   pub llm_custom_prompt: String,
-  pub llm_system_prompt: String,
 }
 
 impl Default for TranscriptionSettings {
@@ -61,7 +59,6 @@ impl Default for TranscriptionSettings {
       llm_base_url: DEFAULT_LLM_BASE_URL.to_owned(),
       llm_model_name: DEFAULT_LLM_MODEL_NAME.to_owned(),
       llm_custom_prompt: DEFAULT_LLM_CUSTOM_PROMPT.to_owned(),
-      llm_system_prompt: DEFAULT_LLM_SYSTEM_PROMPT.to_owned(),
     }
   }
 }
@@ -213,7 +210,6 @@ mod tests {
     assert!(updated.contains("\"llm_base_url\""));
     assert!(updated.contains("\"llm_model_name\""));
     assert!(updated.contains("\"llm_custom_prompt\""));
-    assert!(updated.contains("\"llm_system_prompt\""));
 
     let _ = fs::remove_file(&file);
     let _ = fs::remove_dir_all(&dir);

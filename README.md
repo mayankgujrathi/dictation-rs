@@ -141,8 +141,7 @@ Example:
     "llm_api_key": null,
     "llm_base_url": "http://localhost:11434/v1",
     "llm_model_name": "",
-    "llm_custom_prompt": "Rewrite the transcript according to the requested reformatting level and active application context while preserving user intent.",
-    "llm_system_prompt": "..."
+    "llm_custom_prompt": "Rewrite the transcript according to the requested reformatting level and active application context while preserving user intent."
   }
 }
 ```
