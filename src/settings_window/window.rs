@@ -4,8 +4,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use single_instance::SingleInstance;
-#[cfg(target_os = "linux")]
-use tracing::warn;
 use tracing::{debug, error, info, warn};
 use winit::{
   application::ApplicationHandler,
@@ -108,16 +106,29 @@ fn build_bytes_response(
 
 fn settings_resource_roots() -> Vec<PathBuf> {
   let mut roots = Vec::new();
-  if let Ok(exe_path) = std::env::current_exe() {
-    if let Some(exe_dir) = exe_path.parent() {
-      roots.push(exe_dir.to_path_buf());
-      if let Some(parent) = exe_dir.parent() {
-        roots.push(parent.to_path_buf());
-      }
-      roots.push(exe_dir.join("..").join("Resources"));
-      roots.push(exe_dir.join(".."));
+
+  let exe_path = match std::env::current_exe() {
+    Ok(path) => path,
+    Err(_) => {
+      roots.push(PathBuf::from("."));
+      return roots;
     }
+  };
+
+  let exe_dir = match exe_path.parent() {
+    Some(dir) => dir,
+    None => {
+      roots.push(PathBuf::from("."));
+      return roots;
+    }
+  };
+
+  roots.push(exe_dir.to_path_buf());
+  if let Some(parent) = exe_dir.parent() {
+    roots.push(parent.to_path_buf());
   }
+  roots.push(exe_dir.join("..").join("Resources"));
+  roots.push(exe_dir.join(".."));
   roots.push(PathBuf::from("."));
   roots
 }
