@@ -15,6 +15,45 @@ Turn your voice into ready-to-paste text in seconds with a fast, privacy-friendl
 - Rust (latest stable)
 - A working microphone (uses system default mic)
 
+### Platform-specific GUI/WebView dependencies
+
+`dictation-rs` uses `winit` + `wry` for the tray settings window webview.
+
+- **Windows**
+  - WebView2 runtime is required (usually present on modern Windows; install if missing).
+  - Settings window event loop is created with Windows any-thread support because tray clicks are handled off the main thread.
+
+- **Linux**
+  - WebKitGTK stack is required.
+  - Current CI/release setup installs and verifies:
+    - `libwebkit2gtk-4.1-dev`
+    - `libjavascriptcoregtk-4.1-dev`
+    - `libsoup-3.0-dev`
+    - GTK/X11/Wayland support libs used by the app
+  - `wry` feature `linux-body` is enabled and requires **WebKit2GTK >= 2.40**.
+  - For `winit` + `wry`, GTK is initialized and GTK events are pumped in the settings-window loop.
+
+- **macOS**
+  - WebKit is native.
+  - CI/release workflows defensively set `RUSTFLAGS=-l framework=WebKit` for macOS builds.
+
+### Wry feature flags enabled in this project
+
+- `tracing`: enables tracing for evaluate_script / ipc_handler / custom protocols.
+- `linux-body`: enables custom-protocol request body support on Linux (WebKit2GTK >= 2.40).
+
+### Troubleshooting
+
+- **Windows panic**: `Initializing the event loop outside of the main thread...`
+  - Fixed by enabling Windows any-thread event loop builder path for settings window.
+
+- **Linux webview creation fails / blank window**
+  - Confirm WebKitGTK/JSC/Soup packages are installed.
+  - Confirm `pkg-config --modversion webkit2gtk-4.1` reports version >= `2.40`.
+
+- **macOS cross-compile WKWebView class not found**
+  - Use: `RUSTFLAGS="-l framework=WebKit" cargo build --target=<mac-target>`
+
 ## Building
 
 ```bash

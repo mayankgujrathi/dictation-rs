@@ -1,0 +1,333 @@
+use std::borrow::Cow;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+use single_instance::SingleInstance;
+#[cfg(target_os = "linux")]
+use tracing::warn;
+use tracing::{debug, error, info, warn};
+use winit::{
+  application::ApplicationHandler,
+  dpi::LogicalSize,
+  event::WindowEvent,
+  event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
+  window::Window,
+};
+use wry::{WebView, WebViewBuilder};
+
+use crate::settings_window::{
+  SETTINGS_WINDOW_ARG, SETTINGS_WINDOW_HEIGHT, SETTINGS_WINDOW_TITLE,
+  SETTINGS_WINDOW_WIDTH, bridge,
+};
+
+const BRIDGE_RESPONSE_BUILD_ERROR_BODY: &[u8] =
+  b"{\"ok\":false,\"kind\":\"error.response_build\"}";
+const SETTINGS_NOT_FOUND_HTML: &str = r#"<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dictation Settings</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: Inter, Segoe UI, Arial, sans-serif;
+        background: #111827;
+        color: #e5e7eb;
+      }
+      .card {
+        border: 1px solid #374151;
+        border-radius: 10px;
+        padding: 16px;
+        background: #1f2937;
+      }
+      code {
+        color: #93c5fd;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Settings resources missing</h1>
+      <p>
+        Could not load <code>resources/settings_window/index.html</code>.
+        Please reinstall the app or contact support.
+      </p>
+    </div>
+  </body>
+</html>
+"#;
+
+fn build_json_response(
+  status: u16,
+  body: Vec<u8>,
+) -> wry::http::Response<Cow<'static, [u8]>> {
+  wry::http::Response::builder()
+    .status(status)
+    .header("Content-Type", "application/json")
+    .header("Access-Control-Allow-Origin", "*")
+    .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    .header("Access-Control-Allow-Headers", "content-type")
+    .body(Cow::Owned(body))
+    .unwrap_or_else(|e| {
+      warn!(error = %e, "failed to build protocol response; using fallback");
+      wry::http::Response::builder()
+        .status(500)
+        .header("Content-Type", "application/json")
+        .header("Access-Control-Allow-Origin", "*")
+        .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        .header("Access-Control-Allow-Headers", "content-type")
+        .body(Cow::Borrowed(BRIDGE_RESPONSE_BUILD_ERROR_BODY))
+        .expect("fallback response builder should not fail")
+    })
+}
+
+fn build_bytes_response(
+  status: u16,
+  content_type: &str,
+  body: Vec<u8>,
+) -> wry::http::Response<Cow<'static, [u8]>> {
+  wry::http::Response::builder()
+    .status(status)
+    .header("Content-Type", content_type)
+    .header("Access-Control-Allow-Origin", "*")
+    .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    .header("Access-Control-Allow-Headers", "content-type")
+    .body(Cow::Owned(body))
+    .unwrap_or_else(|e| {
+      warn!(error = %e, "failed to build bytes response; using fallback");
+      wry::http::Response::builder()
+        .status(500)
+        .header("Content-Type", "application/json")
+        .body(Cow::Borrowed(BRIDGE_RESPONSE_BUILD_ERROR_BODY))
+        .expect("fallback response builder should not fail")
+    })
+}
+
+fn settings_resource_roots() -> Vec<PathBuf> {
+  let mut roots = Vec::new();
+  if let Ok(exe_path) = std::env::current_exe() {
+    if let Some(exe_dir) = exe_path.parent() {
+      roots.push(exe_dir.to_path_buf());
+      if let Some(parent) = exe_dir.parent() {
+        roots.push(parent.to_path_buf());
+      }
+      roots.push(exe_dir.join("..").join("Resources"));
+      roots.push(exe_dir.join(".."));
+    }
+  }
+  roots.push(PathBuf::from("."));
+  roots
+}
+
+fn resolve_settings_resource_path(relative: &str) -> Option<PathBuf> {
+  let sanitized = relative.trim_start_matches('/');
+  settings_resource_roots()
+    .into_iter()
+    .map(|root| {
+      root
+        .join("resources")
+        .join("settings_window")
+        .join(sanitized)
+    })
+    .find(|candidate| candidate.is_file())
+}
+
+fn content_type_for_path(path: &Path) -> &'static str {
+  match path.extension().and_then(|e| e.to_str()) {
+    Some("html") => "text/html; charset=utf-8",
+    Some("css") => "text/css; charset=utf-8",
+    Some("js") => "application/javascript; charset=utf-8",
+    Some("json") => "application/json; charset=utf-8",
+    Some("svg") => "image/svg+xml",
+    Some("png") => "image/png",
+    Some("jpg") | Some("jpeg") => "image/jpeg",
+    Some("ico") => "image/x-icon",
+    _ => "application/octet-stream",
+  }
+}
+
+fn handle_settings_protocol_request(
+  request: &wry::http::Request<Vec<u8>>,
+) -> wry::http::Response<Cow<'static, [u8]>> {
+  let method = request.method().as_str().to_string();
+  let path = request.uri().path().trim_start_matches('/').to_string();
+  debug!(%method, %path, "settings custom protocol request received");
+
+  if request.method() == wry::http::Method::OPTIONS {
+    return build_json_response(204, Vec::new());
+  }
+
+  if path == "ipc" {
+    let body = String::from_utf8_lossy(request.body());
+    let response_json = bridge::handle_bridge_request(body.as_ref());
+    return build_json_response(200, response_json.into_bytes());
+  }
+
+  if request.method() != wry::http::Method::GET {
+    return build_json_response(
+      405,
+      b"{\"ok\":false,\"kind\":\"error.method_not_allowed\"}".to_vec(),
+    );
+  }
+
+  let requested = if path.is_empty() {
+    "index.html".to_string()
+  } else if let Some(stripped) = path.strip_prefix("settings/") {
+    stripped.to_string()
+  } else if let Some(stripped) = path.strip_prefix("localhost/settings/") {
+    stripped.to_string()
+  } else {
+    path
+  };
+
+  let Some(resource_path) = resolve_settings_resource_path(&requested) else {
+    if requested == "index.html" {
+      warn!("settings index.html not found; serving fallback inline page");
+      return build_bytes_response(
+        200,
+        "text/html; charset=utf-8",
+        SETTINGS_NOT_FOUND_HTML.as_bytes().to_vec(),
+      );
+    }
+    warn!(requested = %requested, "settings resource not found");
+    return build_bytes_response(
+      404,
+      "text/plain; charset=utf-8",
+      b"Not Found".to_vec(),
+    );
+  };
+
+  match fs::read(&resource_path) {
+    Ok(bytes) => {
+      let content_type = content_type_for_path(&resource_path);
+      build_bytes_response(200, content_type, bytes)
+    }
+    Err(e) => {
+      warn!(error = %e, path = %resource_path.display(), "failed to read settings resource file");
+      build_bytes_response(
+        500,
+        "text/plain; charset=utf-8",
+        b"Internal Server Error".to_vec(),
+      )
+    }
+  }
+}
+
+pub fn should_run_as_settings_process() -> bool {
+  std::env::args().any(|arg| arg == SETTINGS_WINDOW_ARG)
+}
+
+pub fn open_settings_window() {
+  match std::env::current_exe() {
+    Ok(exe_path) => {
+      let mut command = Command::new(exe_path);
+      command.arg(SETTINGS_WINDOW_ARG);
+      command.stdout(std::process::Stdio::null());
+      command.stderr(std::process::Stdio::null());
+
+      if let Err(e) = command.spawn() {
+        error!(error = %e, "failed to spawn settings window process");
+      }
+    }
+    Err(e) => {
+      error!(error = %e, "failed to resolve current executable path for settings window");
+    }
+  }
+}
+
+pub fn run_settings_process() -> Result<(), String> {
+  let instance =
+    SingleInstance::new("dictation-rs-settings-window-single-instance")
+      .map_err(|e| {
+        format!("failed to create settings process instance lock: {e}")
+      })?;
+  if !instance.is_single() {
+    info!("settings window process already running; exiting duplicate request");
+    return Ok(());
+  }
+
+  let event_loop = EventLoop::new().map_err(|e| e.to_string())?;
+  event_loop.set_control_flow(ControlFlow::Wait);
+
+  let mut app = SettingsWindowApp::default();
+  event_loop.run_app(&mut app).map_err(|e| e.to_string())
+}
+
+#[derive(Default)]
+struct SettingsWindowApp {
+  window: Option<Window>,
+  webview: Option<WebView>,
+}
+
+impl ApplicationHandler for SettingsWindowApp {
+  fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+    if self.window.is_some() {
+      return;
+    }
+
+    #[cfg(target_os = "linux")]
+    if let Err(e) = gtk::init() {
+      warn!(error = %e, "failed to initialize GTK before creating settings webview");
+    }
+
+    let attributes = Window::default_attributes()
+      .with_title(SETTINGS_WINDOW_TITLE)
+      .with_inner_size(LogicalSize::new(
+        SETTINGS_WINDOW_WIDTH,
+        SETTINGS_WINDOW_HEIGHT,
+      ))
+      .with_resizable(false);
+
+    let window = match event_loop.create_window(attributes) {
+      Ok(window) => window,
+      Err(e) => {
+        error!(error = %e, "failed to create settings window");
+        event_loop.exit();
+        return;
+      }
+    };
+
+    let webview = match WebViewBuilder::new()
+      .with_custom_protocol("dictation".into(), |_webview_id, request| {
+        handle_settings_protocol_request(&request)
+      })
+      .with_url("dictation://localhost/settings/index.html")
+      .with_ipc_handler(|request| {
+        bridge::handle_ipc(request);
+      })
+      .build(&window)
+    {
+      Ok(webview) => webview,
+      Err(e) => {
+        error!(error = %e, "failed to build settings webview");
+        event_loop.exit();
+        return;
+      }
+    };
+
+    bridge::eval_js(&webview, "window.__RUST_BRIDGE_READY__ = true;");
+    self.webview = Some(webview);
+    self.window = Some(window);
+  }
+
+  fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+    #[cfg(target_os = "linux")]
+    while gtk::events_pending() {
+      gtk::main_iteration_do(false);
+    }
+  }
+
+  fn window_event(
+    &mut self,
+    event_loop: &ActiveEventLoop,
+    _window_id: winit::window::WindowId,
+    event: WindowEvent,
+  ) {
+    if matches!(event, WindowEvent::CloseRequested) {
+      event_loop.exit();
+    }
+  }
+}

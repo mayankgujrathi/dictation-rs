@@ -52,6 +52,12 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
+      - name: Set macOS WebKit link flags (defensive)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          echo "RUSTFLAGS=-l framework=WebKit" >> "$GITHUB_ENV"
+
       - name: Install Linux GUI/audio build dependencies
         if: runner.os == 'Linux'
         run: |
@@ -59,6 +65,9 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libclang-dev \
             libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libjavascriptcoregtk-4.1-dev \
+            libsoup-3.0-dev \
             libatk1.0-dev \
             libgdk-pixbuf-2.0-dev \
             libpango1.0-dev \
@@ -98,6 +107,10 @@ jobs:
           pkg-config --exists xkbcommon-x11
           pkg-config --exists gdk-3.0
           pkg-config --exists gtk+-3.0
+          pkg-config --exists webkit2gtk-4.1
+          pkg-config --atleast-version=2.40 webkit2gtk-4.1
+          pkg-config --exists javascriptcoregtk-4.1
+          pkg-config --exists libsoup-3.0
           pkg-config --exists atk
           pkg-config --exists wayland-client
           pkg-config --exists libudev
@@ -249,6 +262,7 @@ jobs:
           rm -rf "${APPDIR}"
           mkdir -p "${APPDIR}/usr/bin" "${APPDIR}/usr/share/applications" "${APPDIR}/usr/share/icons/hicolor/256x256/apps"
           cp target/release/dictation "${APPDIR}/usr/bin/dictation"
+          cp -R resources "${APPDIR}/usr/resources"
           cp assets/activity.png "${APPDIR}/usr/share/icons/hicolor/256x256/apps/dictation.png"
           cp assets/activity.png "${APPDIR}/dictation.png"
 
@@ -288,6 +302,7 @@ jobs:
           mkdir -p "${CONTENTS_DIR}/MacOS" "${CONTENTS_DIR}/Resources"
           cp target/release/dictation "${CONTENTS_DIR}/MacOS/dictation"
           chmod +x "${CONTENTS_DIR}/MacOS/dictation"
+          cp -R resources "${CONTENTS_DIR}/Resources/resources"
 
           mkdir -p icon.iconset
           sips -z 16 16   assets/activity.png --out icon.iconset/icon_16x16.png
@@ -329,6 +344,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item target/release/dictation.exe dist/dictation.exe
           Copy-Item assets/activity.ico dist/activity.ico
+          Copy-Item resources dist/resources -Recurse -Force
 
           if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
             choco install nsis -y --no-progress
@@ -353,6 +369,8 @@ jobs:
             SetOutPath "$INSTDIR"
             File "dist\${APP_EXE}"
             File "dist\activity.ico"
+            SetOutPath "$INSTDIR\resources"
+            File /r "dist\resources\*"
             CreateDirectory "$SMPROGRAMS\${APP_NAME}"
             CreateShortcut "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\activity.ico" 0
             CreateShortcut "$DESKTOP\Dictation.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\activity.ico" 0
@@ -377,6 +395,7 @@ jobs:
             Delete "$DESKTOP\Dictation.lnk"
             Delete "$INSTDIR\${APP_EXE}"
             Delete "$INSTDIR\activity.ico"
+            RMDir /r "$INSTDIR\resources"
             Delete "$INSTDIR\Uninstall.exe"
             RMDir "$INSTDIR"
 

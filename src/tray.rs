@@ -10,7 +10,7 @@ use tray_icon::{
   menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
 };
 
-use crate::app;
+use crate::{app, settings_window};
 
 const TRAY_ICON_PNG: &[u8] = include_bytes!("../assets/activity.png");
 const ABOUT_URL: &str = "https://github.com/mayankgujrathi/dictation-rs";
@@ -103,8 +103,11 @@ impl TrayManager {
     let icon = create_tray_icon();
     let exit_item = MenuItem::with_id("exit", "Exit", true, None);
     let about_item = MenuItem::with_id("about", "About", true, None);
+    let settings_item = MenuItem::with_id("settings", "Settings", true, None);
 
     let menu = Menu::new();
+    menu.append(&settings_item).unwrap();
+    menu.append(&PredefinedMenuItem::separator()).unwrap();
     menu.append(&exit_item).unwrap();
     menu.append(&PredefinedMenuItem::separator()).unwrap();
     menu.append(&about_item).unwrap();
@@ -157,6 +160,9 @@ pub fn spawn_poll_thread(exit_requested: Arc<AtomicBool>) {
             if let Err(e) = open_about_url() {
               warn!(error = %e, "failed to open about URL");
             }
+          }
+          "settings" => {
+            settings_window::open_settings_window();
           }
           _ => {}
         }

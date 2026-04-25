@@ -9,6 +9,7 @@ mod autostart;
 mod llm;
 mod logging;
 mod settings;
+mod settings_window;
 mod tray;
 
 use std::io::Write;
@@ -29,6 +30,14 @@ fn main() -> eframe::Result<()> {
       .write_all(format!("Failed to initialize logging: {e}\n").as_bytes());
   }
   info!("application startup initiated");
+
+  if settings_window::should_run_as_settings_process() {
+    info!("running in settings-window process mode");
+    if let Err(e) = settings_window::run_settings_process() {
+      error!(error = %e, "settings-window process failed");
+    }
+    return Ok(());
+  }
 
   if let Err(e) = autostart::sync_from_settings() {
     warn!(error = %e, "failed to sync autostart from settings");
