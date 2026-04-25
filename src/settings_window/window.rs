@@ -173,8 +173,21 @@ fn handle_settings_protocol_request(
 
   if path == "ipc" {
     let body = String::from_utf8_lossy(request.body());
-    let response_json = bridge::handle_bridge_request(body.as_ref());
-    return build_json_response(200, response_json.into_bytes());
+    debug!(
+      method = %method,
+      path = %path,
+      request_body_size = body.len(),
+      "settings IPC HTTP request accepted"
+    );
+    let response = bridge::handle_bridge_request(body.as_ref());
+    debug!(
+      method = %method,
+      path = %path,
+      response_status = response.status,
+      response_body_size = response.body.len(),
+      "settings IPC HTTP response ready"
+    );
+    return build_json_response(response.status, response.body.into_bytes());
   }
 
   if request.method() != wry::http::Method::GET {

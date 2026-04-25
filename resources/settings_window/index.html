@@ -15,6 +15,17 @@
     </p>
     <div class="card">
       <button id="ping">Send test message to Rust</button>
+      <div style="margin-top: 12px">
+        <label>
+          x:
+          <input id="concat-x" type="number" value="42" />
+        </label>
+        <label style="margin-left: 8px">
+          y:
+          <input id="concat-y" type="text" value="hello" />
+        </label>
+        <button id="concat" style="margin-left: 8px">Send settings.concat</button>
+      </div>
       <div id="response">No response yet.</div>
     </div>
     <script src="./app.js"></script>
