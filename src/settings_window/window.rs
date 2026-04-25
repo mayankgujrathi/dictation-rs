@@ -10,7 +10,7 @@ use winit::{
   dpi::LogicalSize,
   event::WindowEvent,
   event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
-  window::Window,
+  window::{Icon, Window},
 };
 use wry::{WebView, WebViewBuilder};
 
@@ -21,6 +21,30 @@ use crate::settings_window::{
 
 const BRIDGE_RESPONSE_BUILD_ERROR_BODY: &[u8] =
   b"{\"ok\":false,\"kind\":\"error.response_build\"}";
+#[cfg(not(debug_assertions))]
+const RELEASE_WEBVIEW_HARDENING_SCRIPT: &str = r#"
+(() => {
+  window.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+  }, { capture: true });
+
+  window.addEventListener('keydown', (event) => {
+    const key = (event.key || '').toLowerCase();
+    const ctrlOrMeta = event.ctrlKey || event.metaKey;
+    const shift = event.shiftKey;
+
+    // F12, Ctrl/Cmd+Shift+I/J/C, Ctrl/Cmd+U
+    if (
+      key === 'f12' ||
+      (ctrlOrMeta && shift && (key === 'i' || key === 'j' || key === 'c')) ||
+      (ctrlOrMeta && key === 'u')
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, { capture: true });
+})();
+"#;
 const SETTINGS_NOT_FOUND_HTML: &str = r#"<!doctype html>
 <html lang="en">
   <head>
@@ -131,6 +155,72 @@ fn settings_resource_roots() -> Vec<PathBuf> {
   roots.push(exe_dir.join(".."));
   roots.push(PathBuf::from("."));
   roots
+}
+
+fn icon_candidate_paths() -> Vec<PathBuf> {
+  let mut roots = Vec::new();
+
+  if let Ok(exe_path) = std::env::current_exe()
+    && let Some(exe_dir) = exe_path.parent()
+  {
+    roots.push(exe_dir.to_path_buf());
+    if let Some(parent) = exe_dir.parent() {
+      roots.push(parent.to_path_buf());
+    }
+    roots.push(exe_dir.join("..").join("Resources"));
+    roots.push(exe_dir.join(".."));
+  }
+
+  roots.push(PathBuf::from("."));
+
+  let mut candidates = Vec::new();
+  for root in roots {
+    // Production-first: packaged settings icon.
+    candidates.push(
+      root
+        .join("resources")
+        .join("settings_window")
+        .join("favicon.ico"),
+    );
+
+    // Build/development fallbacks.
+    candidates.push(root.join("assets").join("activity.png"));
+    candidates.push(root.join("resources").join("activity.png"));
+  }
+  candidates
+}
+
+fn load_settings_window_icon() -> Option<Icon> {
+  for path in icon_candidate_paths() {
+    let bytes = match fs::read(&path) {
+      Ok(bytes) => bytes,
+      Err(_) => continue,
+    };
+
+    let decoded = match image::load_from_memory(&bytes) {
+      Ok(decoded) => decoded.into_rgba8(),
+      Err(e) => {
+        warn!(error = %e, path = %path.display(), "failed to decode settings icon image");
+        continue;
+      }
+    };
+
+    let (width, height) = decoded.dimensions();
+    match Icon::from_rgba(decoded.into_raw(), width, height) {
+      Ok(icon) => {
+        info!(path = %path.display(), width, height, "loaded settings window icon");
+        return Some(icon);
+      }
+      Err(e) => {
+        warn!(error = %e, path = %path.display(), "failed to build settings window icon from rgba");
+      }
+    }
+  }
+
+  warn!(
+    "no settings window icon file found; window will use platform default icon"
+  );
+  None
 }
 
 fn resolve_settings_resource_path(relative: &str) -> Option<PathBuf> {
@@ -297,13 +387,17 @@ impl ApplicationHandler for SettingsWindowApp {
       warn!(error = %e, "failed to initialize GTK before creating settings webview");
     }
 
-    let attributes = Window::default_attributes()
+    let mut attributes = Window::default_attributes()
       .with_title(SETTINGS_WINDOW_TITLE)
       .with_inner_size(LogicalSize::new(
         SETTINGS_WINDOW_WIDTH,
         SETTINGS_WINDOW_HEIGHT,
       ))
       .with_resizable(false);
+
+    if let Some(icon) = load_settings_window_icon() {
+      attributes = attributes.with_window_icon(Some(icon));
+    }
 
     let window = match event_loop.create_window(attributes) {
       Ok(window) => window,
@@ -314,16 +408,28 @@ impl ApplicationHandler for SettingsWindowApp {
       }
     };
 
-    let webview = match WebViewBuilder::new()
+    let mut webview_builder = WebViewBuilder::new()
       .with_custom_protocol("dictation".into(), |_webview_id, request| {
         handle_settings_protocol_request(&request)
       })
       .with_url("dictation://localhost/settings/index.html")
       .with_ipc_handler(|request| {
         bridge::handle_ipc(request);
-      })
-      .build(&window)
+      });
+
+    #[cfg(not(debug_assertions))]
     {
+      webview_builder = webview_builder
+        .with_initialization_script(RELEASE_WEBVIEW_HARDENING_SCRIPT)
+        .with_devtools(false);
+    }
+
+    #[cfg(debug_assertions)]
+    {
+      webview_builder = webview_builder.with_devtools(true);
+    }
+
+    let webview = match webview_builder.build(&window) {
       Ok(webview) => webview,
       Err(e) => {
         error!(error = %e, "failed to build settings webview");

@@ -245,6 +245,35 @@ pub fn supported_routes_text(routes: &[RouteDef]) -> String {
     .join(" or ")
 }
 
+#[macro_export]
+macro_rules! decode_payload {
+  ($req:expr, $ty:ty, $route_kind:expr) => {
+    serde_json::from_value::<$ty>($req.payload.clone()).map_err(|e| {
+      let err_string = e.to_string();
+      $crate::settings_window::bridge::lib::invalid_payload_error(
+        $route_kind,
+        $req.request_id.clone(),
+        &err_string,
+      )
+    })
+  };
+}
+
+#[macro_export]
+macro_rules! route_table {
+  ($(($method:expr, $endpoint:expr, $handler:path)),+ $(,)?) => {
+    &[
+      $(
+        $crate::settings_window::bridge::lib::RouteDef {
+          method: $method,
+          endpoint: $endpoint,
+          handler: $handler,
+        }
+      ),+
+    ]
+  };
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -312,33 +341,4 @@ mod tests {
       "POST /settings/ping or POST /settings/concat"
     );
   }
-}
-
-#[macro_export]
-macro_rules! decode_payload {
-  ($req:expr, $ty:ty, $route_kind:expr) => {
-    serde_json::from_value::<$ty>($req.payload.clone()).map_err(|e| {
-      let err_string = e.to_string();
-      $crate::settings_window::bridge::lib::invalid_payload_error(
-        $route_kind,
-        $req.request_id.clone(),
-        &err_string,
-      )
-    })
-  };
-}
-
-#[macro_export]
-macro_rules! route_table {
-  ($(($method:expr, $endpoint:expr, $handler:path)),+ $(,)?) => {
-    &[
-      $(
-        $crate::settings_window::bridge::lib::RouteDef {
-          method: $method,
-          endpoint: $endpoint,
-          handler: $handler,
-        }
-      ),+
-    ]
-  };
 }
