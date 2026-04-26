@@ -1,0 +1,78 @@
+# Settings and Logging
+
+This page contains operational details for runtime settings, logs, and traces.
+
+## Settings File
+
+- Path: `<base_path>/settings.json`
+- The app creates this file with defaults if it is missing.
+
+## Settings Overview
+
+### General
+
+- `start_on_login`: Launch Vocoflow automatically on user sign-in.
+
+### Logging
+
+- `logging.app_log_max_lines`: Max retained lines in `application.log`.
+- `logging.trace_file_limit`: Max retained trace files.
+- `logging.enable_debug_logs`: Enables verbose debug logging.
+
+### Transcription
+
+- `transcription.model_cache_ttl_secs`: Cache TTL for model metadata.
+- `transcription.built_in_dictionary`: Built-in substitutions/vocabulary entries.
+- `transcription.user_dictionary`: User-provided vocabulary entries.
+- `transcription.transcript_reformatting_level`: `none | minimal | normal | freeform`.
+- `transcription.llm_base_url`: OpenAI-compatible API base URL.
+- `transcription.llm_model_name`: Model identifier.
+- `transcription.llm_api_key`: Optional API key.
+- `transcription.llm_custom_prompt`: Extra rewrite instructions.
+
+## Reformatting Levels
+
+- `none` (default): keep transcript unchanged; model calls are generally bypassed.
+- `minimal`: light cleanup (punctuation, casing, small clarity edits).
+- `normal`: readability/grammar improvements while preserving intent.
+- `freeform`: most polished app-context-adapted rewrite; wording may change more.
+
+LLM reformatting uses focused-app context (window title/app metadata) when enabled.
+
+## Base Data Paths
+
+- **Windows:** `C:\Users\<username>\AppData\Roaming\vocoflow\vocoflow\`
+- **macOS:** `/Users/<username>/Library/Application Support/com.vocoflow.vocoflow/`
+- **Linux:** `/home/<username>/.local/share/vocoflow/vocoflow/`
+
+## Logs and Traces
+
+- Application log: `<base_path>/logs/application.log`
+- Trace directory: `<base_path>/logs/traces/`
+- Trace file format: `trace-<timestamp>.json` (Chrome Trace Event format)
+
+### Trace Viewers
+
+- Perfetto UI: https://ui.perfetto.dev
+- Chromium tracing: `chrome://tracing`
+
+## Retention Defaults
+
+- Application log: last **1000 lines**
+- Trace files: latest **100 files**
+
+## Log Levels
+
+- Default: `info`
+- Debug logs can be enabled in settings.
+
+## Notes
+
+- Logging settings are refreshed at runtime.
+- Default settings are intentionally omitted from the main README for faster user skimming.
+
+## Related Docs
+
+- [Architecture](ARCHITECTURE.md)
+- [Build and Release](BUILD_AND_RELEASE.md)
+- [Licensing and Acknowledgments](LICENSES.md)
