@@ -184,7 +184,7 @@ pub fn missing_route_error(request_id: Option<String>) -> BridgeHttpResponse {
       "MISSING_ROUTE",
       "Request must provide method + endpoint",
       Some("method/endpoint"),
-      Some("method='POST', endpoint='/settings/ping'"),
+      Some("method='GET', endpoint='/settings'"),
       None,
     )),
   };
@@ -296,18 +296,18 @@ mod tests {
   #[test]
   fn success_kind_derived_from_endpoint() {
     let route = ResolvedRoute {
-      endpoint: "/settings/ping".to_string(),
-      route_kind: "POST /settings/ping".to_string(),
+      endpoint: "/settings".to_string(),
+      route_kind: "GET /settings".to_string(),
     };
 
-    assert_eq!(success_kind_from_route(&route), "settings.ping.reply");
+    assert_eq!(success_kind_from_route(&route), "settings.reply");
   }
 
   #[test]
   fn success_response_uses_route_derived_kind() {
     let route = ResolvedRoute {
-      endpoint: "/settings/concat".to_string(),
-      route_kind: "POST /settings/concat".to_string(),
+      endpoint: "/settings/update/logging".to_string(),
+      route_kind: "POST /settings/update/logging".to_string(),
     };
 
     let response = success_response(
@@ -317,7 +317,7 @@ mod tests {
     );
 
     assert_eq!(response.status, 200);
-    assert!(response.body.contains("settings.concat.reply"));
+    assert!(response.body.contains("settings.update.logging.reply"));
     assert!(response.body.contains("\"ok\":true"));
   }
 
@@ -325,20 +325,30 @@ mod tests {
   fn supported_routes_text_lists_all_routes() {
     let routes = [
       RouteDef {
-        method: "POST",
-        endpoint: "/settings/ping",
+        method: "GET",
+        endpoint: "/settings",
         handler: dummy_handler,
       },
       RouteDef {
         method: "POST",
-        endpoint: "/settings/concat",
+        endpoint: "/settings/update/start_on_login",
+        handler: dummy_handler,
+      },
+      RouteDef {
+        method: "POST",
+        endpoint: "/settings/update/logging",
+        handler: dummy_handler,
+      },
+      RouteDef {
+        method: "POST",
+        endpoint: "/settings/update/transcription",
         handler: dummy_handler,
       },
     ];
 
     assert_eq!(
       supported_routes_text(&routes),
-      "POST /settings/ping or POST /settings/concat"
+      "GET /settings or POST /settings/update/start_on_login or POST /settings/update/logging or POST /settings/update/transcription"
     );
   }
 }

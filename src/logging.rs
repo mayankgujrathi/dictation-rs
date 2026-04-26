@@ -91,7 +91,6 @@ fn prune_old_trace_files(dir: &Path, keep: usize) -> Result<(), String> {
 }
 
 pub fn init_logging() -> Result<(), String> {
-  let _ = settings::refresh_from_disk();
   let settings = settings::current();
   let app_log_max_lines = settings.logging.app_log_max_lines;
   let trace_file_limit = settings.logging.trace_file_limit;
@@ -164,17 +163,12 @@ pub fn init_logging() -> Result<(), String> {
 }
 
 pub fn enforce_app_log_retention() {
-  let _ = settings::refresh_from_disk();
   let app_log_max_lines = settings::current().logging.app_log_max_lines;
   let path = logs_dir().join("application.log");
   let _ = trim_to_last_n_lines(&path, app_log_max_lines);
 }
 
 pub fn apply_runtime_logging_settings() {
-  if settings::refresh_from_disk().is_err() {
-    return;
-  }
-
   let cfg = settings::current().logging;
   let app_log_path = logs_dir().join("application.log");
   let _ = trim_to_last_n_lines(&app_log_path, cfg.app_log_max_lines);

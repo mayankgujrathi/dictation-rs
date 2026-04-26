@@ -62,22 +62,6 @@ fn main() -> eframe::Result<()> {
   tray::spawn_poll_thread(should_exit.clone());
   debug!("tray polling thread spawned");
 
-  let should_exit_for_settings = should_exit.clone();
-  let settings_refresh_interval_secs =
-    std::env::var("DICTATION_SETTINGS_REFRESH_SECS")
-      .ok()
-      .and_then(|v| v.parse::<u64>().ok())
-      .unwrap_or(5)
-      .max(5);
-  let _settings_refresh_handle = std::thread::spawn(move || {
-    while !should_exit_for_settings.load(Ordering::SeqCst) {
-      logging::apply_runtime_logging_settings();
-      std::thread::sleep(std::time::Duration::from_secs(
-        settings_refresh_interval_secs,
-      ));
-    }
-  });
-
   // Recording state
   let recording_state = audio::RecordingState::new();
   let volume_level = recording_state.volume_level.clone();

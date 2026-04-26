@@ -4,6 +4,7 @@ use std::sync::{OnceLock, RwLock};
 
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
+use tracing::{debug, info};
 
 use crate::app::{
   DEFAULT_LLM_BASE_URL, DEFAULT_LLM_CUSTOM_PROMPT, DEFAULT_LLM_MODEL_NAME,
@@ -167,6 +168,89 @@ pub fn refresh_from_disk() -> Result<bool, String> {
 
   *guard = next;
   Ok(true)
+}
+
+pub fn update_start_on_login(
+  start_on_login: bool,
+) -> Result<AppSettings, String> {
+  info!(start_on_login, "updating start_on_login setting");
+  initialize();
+  let Some(lock) = SETTINGS.get() else {
+    return Err("settings store unavailable".to_string());
+  };
+
+  let snapshot = {
+    let mut guard = lock
+      .write()
+      .map_err(|_| "settings lock poisoned".to_string())?;
+    guard.start_on_login = start_on_login;
+    guard.clone()
+  };
+
+  write_settings(&settings_path(), &snapshot)?;
+  let changed = refresh_from_disk()?;
+  debug!(
+    changed,
+    "settings reloaded from disk after start_on_login update"
+  );
+  Ok(current())
+}
+
+pub fn update_logging(logging: LoggingSettings) -> Result<AppSettings, String> {
+  info!(
+    app_log_max_lines = logging.app_log_max_lines,
+    trace_file_limit = logging.trace_file_limit,
+    enable_debug_logs = logging.enable_debug_logs,
+    "updating logging settings"
+  );
+  initialize();
+  let Some(lock) = SETTINGS.get() else {
+    return Err("settings store unavailable".to_string());
+  };
+
+  let snapshot = {
+    let mut guard = lock
+      .write()
+      .map_err(|_| "settings lock poisoned".to_string())?;
+    guard.logging = logging;
+    guard.clone()
+  };
+
+  write_settings(&settings_path(), &snapshot)?;
+  let changed = refresh_from_disk()?;
+  debug!(changed, "settings reloaded from disk after logging update");
+  Ok(current())
+}
+
+pub fn update_transcription(
+  transcription: TranscriptionSettings,
+) -> Result<AppSettings, String> {
+  info!(
+    model_cache_ttl_secs = transcription.model_cache_ttl_secs,
+    llm_base_url = %transcription.llm_base_url,
+    llm_model_name = %transcription.llm_model_name,
+    "updating transcription settings"
+  );
+  initialize();
+  let Some(lock) = SETTINGS.get() else {
+    return Err("settings store unavailable".to_string());
+  };
+
+  let snapshot = {
+    let mut guard = lock
+      .write()
+      .map_err(|_| "settings lock poisoned".to_string())?;
+    guard.transcription = transcription;
+    guard.clone()
+  };
+
+  write_settings(&settings_path(), &snapshot)?;
+  let changed = refresh_from_disk()?;
+  debug!(
+    changed,
+    "settings reloaded from disk after transcription update"
+  );
+  Ok(current())
 }
 
 #[cfg(test)]
