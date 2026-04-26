@@ -46,3 +46,5 @@ hf_model_downloaded.flag
 /resources/settings_window/index.html
 /resources/settings_window/styles.css
 /resources/settings_window/app.js
+
+/manifests

@@ -612,12 +612,9 @@ jobs:
           }
 
           if ($updateText -match "was not found") {
-            Write-Warning "Package manifest not found in winget-pkgs. Falling back to first-time 'new' submission."
-            & .\wingetcreate.exe new --token "$env:WINGET_TOKEN" -n "$url"
-            if ($LASTEXITCODE -ne 0) {
-              throw "wingetcreate new failed with exit code $LASTEXITCODE"
-            }
-            Write-Host "WinGet new-package submission completed successfully."
+            Write-Warning "Package manifest not found in winget-pkgs. Skipping automated first-time publish because wingetcreate new is interactive in CI."
+            Write-Warning "Please do one-time manual bootstrap: wingetcreate new --token <PAT> -n <installer_url>. After merge, automated 'update' will work on subsequent releases."
+            exit 0
           } else {
             throw "wingetcreate update failed with exit code $updateExit"
           }
