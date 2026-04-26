@@ -1041,9 +1041,11 @@ mod tests {
     let mut cfg = settings::current();
     cfg.transcription.transcript_reformatting_level =
       TranscriptReformattingLevel::Minimal;
+    let default_transcription = settings::TranscriptionSettings::default();
     cfg.transcription.llm_model_name = String::new();
-    cfg.transcription.llm_base_url = "http://localhost:11434/v1".to_owned();
-    cfg.transcription.llm_custom_prompt = "Fix transcript".to_owned();
+    cfg.transcription.llm_base_url = default_transcription.llm_base_url;
+    cfg.transcription.llm_custom_prompt =
+      default_transcription.llm_custom_prompt;
 
     let json =
       serde_json::to_string_pretty(&cfg).expect("should serialize settings");
