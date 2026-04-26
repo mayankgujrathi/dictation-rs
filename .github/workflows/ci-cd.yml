@@ -40,6 +40,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Build settings-window frontend and sync resources
+        shell: bash
+        run: |
+          bun install --cwd ui/settings-window
+          bun run --cwd ui/settings-window build:sync
+
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:

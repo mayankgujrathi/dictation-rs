@@ -60,6 +60,33 @@ Turn your voice into ready-to-paste text in seconds with a fast, privacy-friendl
 cargo build --release
 ```
 
+### Settings window frontend (Bun + React + TypeScript)
+
+The settings UI is now authored in `ui/settings-window` (React + TypeScript, Bun-managed) and compiled into `resources/settings_window` for Wry to serve.
+
+- Build frontend + sync artifacts into `resources/settings_window`:
+
+```bash
+bun run --cwd ui/settings-window build:sync
+```
+
+- Local frontend development server:
+
+```bash
+bun install --cwd ui/settings-window
+bun run --cwd ui/settings-window dev
+```
+
+Production output is intentionally lightweight and Wry-compatible:
+- stable entry files (`index.html`, `app.js`, `styles.css`)
+- minified bundle
+- no release sourcemaps
+- relative asset paths for `dictation://localhost/settings/...`
+
+Note: `resources/settings_window/index.html`, `app.js`, and `styles.css` are generated artifacts from `build:sync` and are intentionally not tracked in git.
+
+CI/CD + release workflows run this frontend build/sync step before Rust build and packaging, so shipped artifacts always include the latest settings UI.
+
 ### Windows icon embedding note
 
 - Windows executable icon embedding is handled via `winres` in `build.rs` using `assets/activity.ico`.
