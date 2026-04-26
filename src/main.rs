@@ -39,6 +39,10 @@ fn main() -> eframe::Result<()> {
     return Ok(());
   }
 
+  if let Err(e) = autostart::sync_settings_from_system() {
+    warn!(error = %e, "failed to sync settings from system autostart state");
+  }
+
   if let Err(e) = autostart::sync_from_settings() {
     warn!(error = %e, "failed to sync autostart from settings");
   }

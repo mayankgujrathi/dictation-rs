@@ -1,5 +1,6 @@
 use tracing::{debug, info};
 
+use crate::autostart;
 use crate::settings;
 use crate::settings_window::bridge::lib::{
   BridgeHttpResponse, BridgeRequest, ResolvedRoute, success_response,
@@ -19,6 +20,7 @@ pub fn handle(
     route = %route.route_kind,
     "settings get-all request"
   );
+  let _ = autostart::sync_settings_from_system();
   let current = settings::current();
   debug!(
     request_id = ?req.request_id,

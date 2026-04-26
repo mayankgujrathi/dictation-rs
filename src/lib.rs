@@ -4,6 +4,7 @@
 
 pub mod app;
 pub mod audio;
+pub mod autostart;
 pub mod llm;
 pub mod logging;
 pub mod settings;

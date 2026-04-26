@@ -1,5 +1,6 @@
 use tracing::info;
 
+use crate::autostart;
 use crate::settings;
 use crate::settings_window::bridge::lib::{
   BridgeHttpResponse, BridgeRequest, ResolvedRoute, success_response,
@@ -19,6 +20,7 @@ pub fn handle(
     route = %route.route_kind,
     "settings get start_on_login request"
   );
+  let _ = autostart::sync_settings_from_system();
   success_response(
     req.request_id.clone(),
     route,

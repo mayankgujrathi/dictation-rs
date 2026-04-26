@@ -196,6 +196,30 @@ pub fn update_start_on_login(
   Ok(current())
 }
 
+pub fn persist_start_on_login_from_system(
+  start_on_login: bool,
+) -> Result<AppSettings, String> {
+  initialize();
+  let Some(lock) = SETTINGS.get() else {
+    return Err("settings store unavailable".to_string());
+  };
+
+  let snapshot = {
+    let mut guard = lock
+      .write()
+      .map_err(|_| "settings lock poisoned".to_string())?;
+    if guard.start_on_login == start_on_login {
+      return Ok(guard.clone());
+    }
+    guard.start_on_login = start_on_login;
+    guard.clone()
+  };
+
+  write_settings(&settings_path(), &snapshot)?;
+  let _ = refresh_from_disk()?;
+  Ok(current())
+}
+
 pub fn update_logging(logging: LoggingSettings) -> Result<AppSettings, String> {
   info!(
     app_log_max_lines = logging.app_log_max_lines,

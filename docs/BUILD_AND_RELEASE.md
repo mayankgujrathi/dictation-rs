@@ -71,6 +71,37 @@ RUSTFLAGS="-l framework=WebKit" cargo build --target=<mac-target>
 - **Linux:** `vocoflow-<version>-linux.AppImage`
 - **macOS:** `vocoflow-<version>-macos.dmg`
 
+## Windows Installer Silent Mode
+
+Windows NSIS installer supports quiet install/uninstall for WinGet checks:
+
+- Install silently: `vocoflow-<version>-windows-installer.exe /S`
+- Uninstall silently: `"%LOCALAPPDATA%\Programs\Vocoflow\Uninstall.exe" /S`
+
+CI validates silent install behavior during workflow runs.
+
+## Security Scans in CI/CD + Release
+
+- **Windows Defender** scan on Windows installer artifacts.
+- **Trivy** filesystem supply-chain scan (high/critical fails CI).
+- **SHA256 checksums** generated for release artifacts.
+- **Optional VirusTotal** upload scan when `VIRUSTOTAL_API_KEY` is set.
+
+## WinGet Publish Automation
+
+On every newly pushed tag, release workflow runs a WinGet publish job that submits/updates a PR to `microsoft/winget-pkgs`.
+
+- Package id: `mayankgujrathi.vocoflow`
+- Source installer: GitHub Release Windows installer asset
+
+Required secret:
+
+- `WINGET_TOKEN` (token used by `wingetcreate --submit`)
+
+Recommended optional secret:
+
+- `VIRUSTOTAL_API_KEY`
+
 ## Signing Status
 
 Vocoflow is actively developed as a hobby project. Some release artifacts may not be fully signed/notarized yet.

@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use tracing::{error, info};
 
+use crate::autostart;
 use crate::decode_payload;
 use crate::settings;
 use crate::settings_window::bridge::lib::{
@@ -39,6 +40,13 @@ pub fn handle(
 
   match settings::update_start_on_login(payload.start_on_login) {
     Ok(updated_settings) => {
+      if let Err(err) = autostart::sync_from_settings() {
+        error!(
+          request_id = ?req.request_id,
+          error = %err,
+          "failed to sync autostart after start_on_login update"
+        );
+      }
       info!(
         request_id = ?req.request_id,
         start_on_login = payload.start_on_login,

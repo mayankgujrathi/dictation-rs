@@ -364,6 +364,7 @@ jobs:
 
           @'
           !define APP_NAME "Vocoflow"
+          !define AUTOSTART_VALUE "vocoflow"
           !define APP_EXE "vocoflow.exe"
           !define VERSION "${{ steps.tag_base.outputs.value }}"
           Name "${APP_NAME}"
@@ -372,6 +373,8 @@ jobs:
           InstallDirRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "InstallLocation"
           Icon "dist\activity.ico"
           UninstallIcon "dist\activity.ico"
+          SilentInstall normal
+          SilentUnInstall normal
           RequestExecutionLevel user
           Page directory
           Page instfiles
@@ -386,6 +389,8 @@ jobs:
             CreateShortcut "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\activity.ico" 0
             CreateShortcut "$DESKTOP\Vocoflow.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\activity.ico" 0
             WriteUninstaller "$INSTDIR\Uninstall.exe"
+            DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${AUTOSTART_VALUE}"
+            DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "${AUTOSTART_VALUE}"
 
             WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayName" "${APP_NAME}"
             WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayVersion" "${VERSION}"
@@ -393,6 +398,7 @@ jobs:
             WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "InstallLocation" "$INSTDIR"
             WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayIcon" "$INSTDIR\activity.ico,0"
             WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "UninstallString" '"$INSTDIR\Uninstall.exe"'
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "QuietUninstallString" '"$INSTDIR\Uninstall.exe" /S'
             WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "NoModify" 1
             WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "NoRepair" 1
           SectionEnd
@@ -409,18 +415,65 @@ jobs:
             RMDir /r "$INSTDIR\resources"
             Delete "$INSTDIR\Uninstall.exe"
             RMDir "$INSTDIR"
+            DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${AUTOSTART_VALUE}"
+            DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "${AUTOSTART_VALUE}"
 
             DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
 
+            IfSilent no_user_data_prompt
             MessageBox MB_ICONQUESTION|MB_YESNO "Do you also want to delete user data at $APPDATA\\vocoflow\\vocoflow?" IDNO keep_user_data
               RMDir /r "$APPDATA\vocoflow\vocoflow"
               RMDir "$APPDATA\vocoflow"
             keep_user_data:
+            no_user_data_prompt:
           SectionEnd
           '@ | Set-Content -Path installer.nsi
 
           & makensis installer.nsi
           Move-Item "vocoflow-${{ steps.tag_base.outputs.value }}-windows-installer.exe" "dist/vocoflow-${{ steps.tag_base.outputs.value }}-windows-installer.exe" -Force
+
+      - name: Validate Windows silent install behavior (/S)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installer = "dist/vocoflow-${{ steps.tag_base.outputs.value }}-windows-installer.exe"
+          Start-Process -FilePath $installer -ArgumentList "/S" -Wait -NoNewWindow
+          $installedExe = Join-Path $env:LOCALAPPDATA "Programs\Vocoflow\vocoflow.exe"
+          if (-not (Test-Path $installedExe)) {
+            throw "Silent install validation failed: $installedExe was not created"
+          }
+          Start-Process -FilePath (Join-Path $env:LOCALAPPDATA "Programs\Vocoflow\Uninstall.exe") -ArgumentList "/S" -Wait -NoNewWindow
+
+      - name: Malware scan (Windows Defender)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $defender = "C:\Program Files\Windows Defender\MpCmdRun.exe"
+          if (-not (Test-Path $defender)) {
+            throw "Windows Defender CLI not found at $defender"
+          }
+          & $defender -Scan -ScanType 3 -File "dist/vocoflow-${{ steps.tag_base.outputs.value }}-windows-installer.exe"
+
+      - name: Generate artifact checksums (brew/winget style validation)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            certutil -hashfile "dist/vocoflow-${{ steps.tag_base.outputs.value }}-windows-installer.exe" SHA256 | sed -n '2p' | tr -d ' \r\n' > "dist/vocoflow-${{ steps.tag_base.outputs.value }}-windows-installer.exe.sha256"
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            shasum -a 256 "dist/vocoflow-${{ steps.tag_base.outputs.value }}-macos.dmg" | awk '{print $1}' > "dist/vocoflow-${{ steps.tag_base.outputs.value }}-macos.dmg.sha256"
+          else
+            sha256sum "dist/vocoflow-${{ steps.tag_base.outputs.value }}-linux.AppImage" > "dist/vocoflow-${{ steps.tag_base.outputs.value }}-linux.AppImage.sha256"
+          fi
+
+      - name: Supply-chain filesystem scan (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          exit-code: '1'
+          severity: CRITICAL,HIGH
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4

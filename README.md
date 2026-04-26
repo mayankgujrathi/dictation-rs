@@ -33,6 +33,16 @@ winget install vocoflow
 brew install vocoflow
 ```
 
+## Security & Release Trust Checks (CI/CD)
+
+- Multi-OS build + test validation (Windows/macOS/Linux).
+- Windows installer quiet-mode validation (`/S`) for package manager compatibility.
+- Windows Defender malware scan on release installer artifacts.
+- SHA256 checksum generation for published artifacts (used by winget/brew style verification).
+- Optional VirusTotal upload scan when `VIRUSTOTAL_API_KEY` is configured.
+- Trivy supply-chain filesystem scan for high/critical findings.
+- WinGet publish automation opens PR on new tag creation for package id `mayankgujrathi.vocoflow`.
+
 ### Build from source
 
 ```bash

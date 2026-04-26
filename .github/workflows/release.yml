@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   build-and-release:
@@ -24,6 +25,7 @@ jobs:
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       LINUX_GPG_PRIVATE_KEY: ${{ secrets.LINUX_GPG_PRIVATE_KEY }}
       LINUX_GPG_PASSPHRASE: ${{ secrets.LINUX_GPG_PASSPHRASE }}
+      VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
     strategy:
       fail-fast: false
       matrix:
@@ -315,6 +317,7 @@ jobs:
 
           @'
           !define APP_NAME "Vocoflow"
+          !define AUTOSTART_VALUE "vocoflow"
           !define APP_EXE "vocoflow.exe"
           !define VERSION "${{ github.ref_name }}"
           Name "${APP_NAME}"
@@ -323,6 +326,8 @@ jobs:
           InstallDirRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "InstallLocation"
           Icon "dist\activity.ico"
           UninstallIcon "dist\activity.ico"
+          SilentInstall normal
+          SilentUnInstall normal
           RequestExecutionLevel user
           Page directory
           Page instfiles
@@ -338,12 +343,17 @@ jobs:
             CreateShortcut "$DESKTOP\Vocoflow.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\activity.ico" 0
             WriteUninstaller "$INSTDIR\Uninstall.exe"
 
+            ; Ensure install default is startup disabled
+            DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${AUTOSTART_VALUE}"
+            DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "${AUTOSTART_VALUE}"
+
             WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayName" "${APP_NAME}"
             WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayVersion" "${VERSION}"
             WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "Publisher" "vocoflow"
             WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "InstallLocation" "$INSTDIR"
             WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayIcon" "$INSTDIR\activity.ico,0"
             WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "UninstallString" '"$INSTDIR\Uninstall.exe"'
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "QuietUninstallString" '"$INSTDIR\Uninstall.exe" /S'
             WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "NoModify" 1
             WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "NoRepair" 1
           SectionEnd
@@ -361,17 +371,72 @@ jobs:
             Delete "$INSTDIR\Uninstall.exe"
             RMDir "$INSTDIR"
 
+            DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${AUTOSTART_VALUE}"
+            DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "${AUTOSTART_VALUE}"
+
             DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
 
+            IfSilent no_user_data_prompt
             MessageBox MB_ICONQUESTION|MB_YESNO "Do you also want to delete user data at $APPDATA\\vocoflow\\vocoflow?" IDNO keep_user_data
               RMDir /r "$APPDATA\vocoflow\vocoflow"
               RMDir "$APPDATA\vocoflow"
             keep_user_data:
+            no_user_data_prompt:
           SectionEnd
           '@ | Set-Content -Path installer.nsi
 
           & makensis installer.nsi
           Move-Item "vocoflow-${{ github.ref_name }}-windows-installer.exe" "dist/vocoflow-${{ github.ref_name }}-windows-installer.exe" -Force
+
+      - name: Validate Windows silent install behavior (/S)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installer = "dist/vocoflow-${{ github.ref_name }}-windows-installer.exe"
+          Start-Process -FilePath $installer -ArgumentList "/S" -Wait -NoNewWindow
+          $installedExe = Join-Path $env:LOCALAPPDATA "Programs\Vocoflow\vocoflow.exe"
+          if (-not (Test-Path $installedExe)) {
+            throw "Silent install validation failed: $installedExe was not created"
+          }
+          Start-Process -FilePath (Join-Path $env:LOCALAPPDATA "Programs\Vocoflow\Uninstall.exe") -ArgumentList "/S" -Wait -NoNewWindow
+
+      - name: Malware scan (Windows Defender)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $defender = "C:\Program Files\Windows Defender\MpCmdRun.exe"
+          if (-not (Test-Path $defender)) {
+            throw "Windows Defender CLI not found at $defender"
+          }
+          & $defender -Scan -ScanType 3 -File "dist/vocoflow-${{ github.ref_name }}-windows-installer.exe"
+
+      - name: Generate artifact checksums (brew/winget style validation)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            certutil -hashfile "dist/vocoflow-${{ github.ref_name }}-windows-installer.exe" SHA256 | sed -n '2p' | tr -d ' \r\n' > "dist/vocoflow-${{ github.ref_name }}-windows-installer.exe.sha256"
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            shasum -a 256 "dist/vocoflow-${{ github.ref_name }}-macos.dmg" | awk '{print $1}' > "dist/vocoflow-${{ github.ref_name }}-macos.dmg.sha256"
+          fi
+
+      - name: Optional VirusTotal scan
+        if: env.VIRUSTOTAL_API_KEY != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            FILE="dist/vocoflow-${{ github.ref_name }}-windows-installer.exe"
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            FILE="dist/vocoflow-${{ github.ref_name }}-macos.dmg"
+          else
+            FILE="dist/vocoflow-${{ github.ref_name }}-linux.AppImage"
+          fi
+          curl --fail --request POST \
+            --url https://www.virustotal.com/api/v3/files \
+            --header "x-apikey: ${VIRUSTOTAL_API_KEY}" \
+            --form "file=@${FILE}" > /dev/null
 
       - name: Optional Windows installer signing (Phase 2)
         if: runner.os == 'Windows' && env.WIN_CERT_PFX_BASE64 != '' && env.WIN_CERT_PASSWORD != ''
@@ -440,6 +505,7 @@ jobs:
         with:
           files: |
             dist/vocoflow-${{ github.ref_name }}-windows-installer.exe
+            dist/vocoflow-${{ github.ref_name }}-windows-installer.exe.sha256
           generate_release_notes: true
 
       - name: Upload macOS release asset
@@ -448,4 +514,36 @@ jobs:
         with:
           files: |
             dist/vocoflow-${{ github.ref_name }}-macos.dmg
+            dist/vocoflow-${{ github.ref_name }}-macos.dmg.sha256
           generate_release_notes: true
+
+  winget-publish:
+    name: Publish to WinGet
+    needs: build-and-release
+    runs-on: windows-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download wingetcreate
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://aka.ms/wingetcreate/latest" -OutFile "wingetcreate.exe"
+
+      - name: Compute release metadata
+        id: meta
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          $url = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/vocoflow-${{ github.ref_name }}-windows-installer.exe"
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "url=$url" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Submit WinGet manifest PR
+        shell: pwsh
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          if (-not $env:WINGET_TOKEN) { throw "Missing WINGET_TOKEN secret" }
+          .\wingetcreate.exe update mayankgujrathi.vocoflow --version "${{ steps.meta.outputs.version }}" --urls "${{ steps.meta.outputs.url }}" --submit --token "$env:WINGET_TOKEN"

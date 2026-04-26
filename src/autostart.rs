@@ -14,6 +14,16 @@ pub fn sync_from_settings() -> Result<(), String> {
   }
 }
 
+pub fn sync_settings_from_system() -> Result<(), String> {
+  let enabled = system_autostart_enabled()?;
+  let _ = settings::persist_start_on_login_from_system(enabled)?;
+  Ok(())
+}
+
+fn system_autostart_enabled() -> Result<bool, String> {
+  is_autostart_enabled()
+}
+
 fn executable_path() -> Result<PathBuf, String> {
   std::env::current_exe()
     .map_err(|e| format!("resolve current exe failed: {e}"))
@@ -61,6 +71,51 @@ fn disable_autostart() -> Result<(), String> {
   }
 }
 
+#[cfg(target_os = "windows")]
+fn is_autostart_enabled() -> Result<bool, String> {
+  use winreg::RegKey;
+  use winreg::RegValue;
+  use winreg::enums::{HKEY_CURRENT_USER, KEY_READ};
+
+  let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+  let run_key = hkcu
+    .open_subkey_with_flags(
+      "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+      KEY_READ,
+    )
+    .map_err(|e| format!("open Run key failed: {e}"))?;
+
+  let run_value: Result<String, _> = run_key.get_value(AUTOSTART_VALUE_NAME);
+  if run_value.is_err() {
+    return Ok(false);
+  }
+
+  // Task Manager startup toggles are reflected via StartupApproved\Run.
+  let approved = hkcu.open_subkey_with_flags(
+    "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run",
+    KEY_READ,
+  );
+
+  let Ok(approved_key) = approved else {
+    return Ok(true);
+  };
+
+  let state: Result<RegValue, _> =
+    approved_key.get_raw_value(AUTOSTART_VALUE_NAME);
+  let Ok(state) = state else {
+    return Ok(true);
+  };
+
+  let bytes = state.bytes;
+  let flag = bytes.first().copied().unwrap_or_default();
+  // Known disabled flags in StartupApproved: 0x03/0x07.
+  if flag == 0x03 || flag == 0x07 {
+    Ok(false)
+  } else {
+    Ok(true)
+  }
+}
+
 #[cfg(target_os = "linux")]
 fn enable_autostart() -> Result<(), String> {
   use std::fs;
@@ -104,6 +159,11 @@ fn linux_autostart_file() -> Result<PathBuf, String> {
       .join("autostart")
       .join("vocoflow.desktop"),
   )
+}
+
+#[cfg(target_os = "linux")]
+fn is_autostart_enabled() -> Result<bool, String> {
+  Ok(linux_autostart_file()?.exists())
 }
 
 #[cfg(target_os = "macos")]
@@ -169,6 +229,11 @@ fn macos_launch_agent_file() -> Result<PathBuf, String> {
   )
 }
 
+#[cfg(target_os = "macos")]
+fn is_autostart_enabled() -> Result<bool, String> {
+  Ok(macos_launch_agent_file()?.exists())
+}
+
 #[cfg(not(any(
   target_os = "windows",
   target_os = "linux",
@@ -176,6 +241,15 @@ fn macos_launch_agent_file() -> Result<PathBuf, String> {
 )))]
 fn enable_autostart() -> Result<(), String> {
   Ok(())
+}
+
+#[cfg(not(any(
+  target_os = "windows",
+  target_os = "linux",
+  target_os = "macos"
+)))]
+fn is_autostart_enabled() -> Result<bool, String> {
+  Ok(false)
 }
 
 #[cfg(not(any(
