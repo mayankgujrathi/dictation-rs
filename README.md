@@ -8,7 +8,7 @@ Turn your voice into ready-to-paste text in seconds with a fast, privacy-friendl
 
 ### Requirements
 
-- A working microphone
+- A working microphone (uses system default mic).
 
 ### Install from GitHub Releases (recommended)
 
@@ -47,7 +47,7 @@ cargo run --release
 
 ### Use
 
-1. Press ``Ctrl + \` `` (Windows/Linux) or ``Command + \` `` (macOS) to start recording.
+1. Press ``Ctrl + ` `` (Windows/Linux) or ``Command + ` `` (macOS) to start recording.
 2. Speak normally.
 3. Press the same hotkey again to stop.
 4. Transcribed text is copied and typed into the active text field.
