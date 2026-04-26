@@ -1,6 +1,6 @@
-# dictation-rs: Voice Dictation
+# vocoflow: Voice Vocoflow
 
-Turn your voice into ready-to-paste text in seconds with a fast, privacy-friendly desktop dictation widget built in Rust. `dictation-rs` captures microphone input, runs local model transcription, and sends the result directly to your clipboard and active text field so you can stay in flow while writing.
+Turn your voice into ready-to-paste text in seconds with a fast, privacy-friendly desktop vocoflow widget built in Rust. `vocoflow` captures microphone input, runs local model transcription, and sends the result directly to your clipboard and active text field so you can stay in flow while writing.
 
 ## Features
 
@@ -17,7 +17,7 @@ Turn your voice into ready-to-paste text in seconds with a fast, privacy-friendl
 
 ### Platform-specific GUI/WebView dependencies
 
-`dictation-rs` uses `winit` + `wry` for the tray settings window webview.
+`vocoflow` uses `winit` + `wry` for the tray settings window webview.
 
 - **Windows**
   - WebView2 runtime is required (usually present on modern Windows; install if missing).
@@ -81,7 +81,7 @@ Production output is intentionally lightweight and Wry-compatible:
 - stable entry files (`index.html`, `app.js`, `styles.css`)
 - minified bundle
 - no release sourcemaps
-- relative asset paths for `dictation://localhost/settings/...`
+- relative asset paths for `vocoflow://localhost/settings/...`
 
 Note: `resources/settings_window/index.html`, `app.js`, and `styles.css` are generated artifacts from `build:sync` and are intentionally not tracked in git.
 
@@ -93,15 +93,15 @@ CI/CD + release workflows run this frontend build/sync step before Rust build an
 - Local Windows builds should have Visual Studio Build Tools / Windows SDK installed.
 - GitHub Actions Windows workflows (`CI/CD` and `Release`) initialize the MSVC environment via `ilammy/msvc-dev-cmd@v1` before build.
 
-The binary will be created at `target/release/dictation.exe`.
+The binary will be created at `target/release/vocoflow.exe`.
 
 ## CI/CD packaging outputs
 
 GitHub Actions now builds installer/package-style artifacts for each platform:
 
-- **Windows:** `dictation-<version>-windows-installer.exe` (NSIS installer)
-- **Linux:** `dictation-<version>-linux.AppImage`
-- **macOS:** `dictation-<version>-macos.dmg` (drag-and-drop `.app` installer style)
+- **Windows:** `vocoflow-<version>-windows-installer.exe` (NSIS installer)
+- **Linux:** `vocoflow-<version>-linux.AppImage`
+- **macOS:** `vocoflow-<version>-macos.dmg` (drag-and-drop `.app` installer style)
 
 Notes:
 - `release.yml` publishes these as GitHub Release assets for tags.
@@ -132,7 +132,7 @@ The release workflow includes optional, secret-guarded signing steps that activa
 
 When Linux GPG secrets are present, CI also publishes:
 
-- `dictation-<version>-linux.AppImage.sha256.asc`
+- `vocoflow-<version>-linux.AppImage.sha256.asc`
 
 ## Usage
 
@@ -142,7 +142,7 @@ When Linux GPG secrets are present, CI also publishes:
    ```
    or run the built binary directly:
    ```bash
-   target/release/dictation.exe
+   target/release/vocoflow.exe
    ```
 
 2. Use ``Ctrl + ` `` (Windows/Linux) or ``Command + ` `` (macOS) to toggle recording on.
@@ -156,9 +156,9 @@ When Linux GPG secrets are present, CI also publishes:
 ## Logging & Tracing
 
 - Base path (per OS):
-  - **Windows:** `C:\Users\<username>\AppData\Roaming\dictation\dictation\`
-  - **macOS:** `/Users/<username>/Library/Application Support/com.dictation.dictation/`
-  - **Linux:** `/home/<username>/.local/share/dictation/dictation/`
+  - **Windows:** `C:\Users\<username>\AppData\Roaming\vocoflow\vocoflow\`
+  - **macOS:** `/Users/<username>/Library/Application Support/com.vocoflow.vocoflow/`
+  - **Linux:** `/home/<username>/.local/share/vocoflow/vocoflow/`
 - Application logs are written to:
   - `<base_path>/logs/application.log`
 - Trace files are written to:

@@ -140,8 +140,8 @@ function App() {
       <header className="mb-5 rounded-xl border border-slate-700/50 bg-material-gradient p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-semibold">Dictation Settings</h1>
-            <p className="mt-1 text-xs text-slate-200/90">Materialized dark theme UI using Rust IPC for get/post operations.</p>
+            <h1 className="text-xl font-semibold">Vocoflow Settings</h1>
+            <p className="mt-1 text-xs text-slate-200/90"></p>
           </div>
           <button type="button" onClick={() => void runReset('all')} className="rounded-lg border border-slate-500/70 bg-slate-900/40 px-3 py-1.5 text-xs text-slate-100">
             Reset all defaults

@@ -44,10 +44,10 @@ fn main() -> eframe::Result<()> {
   }
 
   // Prevent launching multiple app instances.
-  let instance = SingleInstance::new("dictation-rs-single-instance")
+  let instance = SingleInstance::new("vocoflow-single-instance")
     .expect("Failed to create app instance lock");
   if !instance.is_single() {
-    warn!("dictation is already running; exiting duplicate instance");
+    warn!("vocoflow is already running; exiting duplicate instance");
     return Ok(());
   }
 

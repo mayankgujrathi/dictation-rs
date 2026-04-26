@@ -13,7 +13,7 @@ use tray_icon::{
 use crate::{app, settings_window};
 
 const TRAY_ICON_PNG: &[u8] = include_bytes!("../assets/activity.png");
-const ABOUT_URL: &str = "https://github.com/mayankgujrathi/dictation-rs";
+const ABOUT_URL: &str = "https://github.com/mayankgujrathi/vocoflow";
 
 #[cfg(target_os = "windows")]
 fn open_about_url() -> Result<(), String> {
@@ -114,7 +114,7 @@ impl TrayManager {
 
     let tray_icon = TrayIconBuilder::new()
       .with_menu(Box::new(menu))
-      .with_tooltip("dictation-rs")
+      .with_tooltip("vocoflow")
       .with_icon(icon)
       .build()
       .expect("Failed to create tray icon");

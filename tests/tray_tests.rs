@@ -2,9 +2,9 @@
 //!
 //! Tests for tray icon generation, event handling and manager logic.
 
-use dictation::tray::{TrayManager, create_tray_icon, spawn_poll_thread};
 use std::sync::{Arc, atomic::AtomicBool};
 use std::time::Duration;
+use vocoflow::tray::{TrayManager, create_tray_icon, spawn_poll_thread};
 
 #[cfg(test)]
 mod icon_tests {

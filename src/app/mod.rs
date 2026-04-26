@@ -116,7 +116,7 @@ mod tests {
         .join("parakeet-tdt-0.6b-v3-int8");
     }
 
-    ProjectDirs::from("com", "dictation", "dictation")
+    ProjectDirs::from("com", "vocoflow", "vocoflow")
       .map(|dirs| {
         dirs
           .data_dir()

@@ -37,7 +37,7 @@ fn calculate_rms(samples: &[f32]) -> f32 {
 }
 
 fn model_base_dir() -> std::path::PathBuf {
-  ProjectDirs::from("com", "dictation", "dictation")
+  ProjectDirs::from("com", "vocoflow", "vocoflow")
     .map(|dirs| dirs.data_dir().to_path_buf())
     .unwrap_or_else(|| {
       std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir())
@@ -329,7 +329,7 @@ impl RecordingState {
       };
 
       // Create temp file path
-      let temp_path = std::env::temp_dir().join("dictation_temp.wav");
+      let temp_path = std::env::temp_dir().join("vocoflow_temp.wav");
 
       let writer = match WavWriter::create(&temp_path, spec) {
         Ok(w) => w,

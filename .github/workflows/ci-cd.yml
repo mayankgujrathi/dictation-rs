@@ -267,38 +267,38 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          APPDIR="dictation.AppDir"
+          APPDIR="vocoflow.AppDir"
           VERSION="${{ steps.tag_base.outputs.value }}"
 
           rm -rf "${APPDIR}"
           mkdir -p "${APPDIR}/usr/bin" "${APPDIR}/usr/share/applications" "${APPDIR}/usr/share/icons/hicolor/256x256/apps"
-          cp target/release/dictation "${APPDIR}/usr/bin/dictation"
+          cp target/release/vocoflow "${APPDIR}/usr/bin/vocoflow"
           cp -R resources "${APPDIR}/usr/resources"
-          cp assets/activity.png "${APPDIR}/usr/share/icons/hicolor/256x256/apps/dictation.png"
-          cp assets/activity.png "${APPDIR}/dictation.png"
+          cp assets/activity.png "${APPDIR}/usr/share/icons/hicolor/256x256/apps/vocoflow.png"
+          cp assets/activity.png "${APPDIR}/vocoflow.png"
 
           cat > "${APPDIR}/AppRun" <<'APPRUN'
           #!/usr/bin/env bash
           HERE="$(dirname "$(readlink -f "$0")")"
-          exec "$HERE/usr/bin/dictation" "$@"
+          exec "$HERE/usr/bin/vocoflow" "$@"
           APPRUN
           chmod +x "${APPDIR}/AppRun"
 
-          cat > "${APPDIR}/dictation.desktop" <<'DESKTOP'
+          cat > "${APPDIR}/vocoflow.desktop" <<'DESKTOP'
           [Desktop Entry]
           Type=Application
-          Name=Dictation
-          Exec=dictation
-          Icon=dictation
+          Name=Vocoflow
+          Exec=vocoflow
+          Icon=vocoflow
           Categories=Utility;
           Terminal=false
           DESKTOP
-          cp "${APPDIR}/dictation.desktop" "${APPDIR}/usr/share/applications/dictation.desktop"
+          cp "${APPDIR}/vocoflow.desktop" "${APPDIR}/usr/share/applications/vocoflow.desktop"
 
           APPIMAGE_TOOL="appimagetool-x86_64.AppImage"
           curl -L -o "${APPIMAGE_TOOL}" "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
           chmod +x "${APPIMAGE_TOOL}"
-          ARCH=x86_64 ./${APPIMAGE_TOOL} --appimage-extract-and-run "${APPDIR}" "dist/dictation-${VERSION}-linux.AppImage"
+          ARCH=x86_64 ./${APPIMAGE_TOOL} --appimage-extract-and-run "${APPDIR}" "dist/vocoflow-${VERSION}-linux.AppImage"
 
       - name: Package macOS drag-and-drop DMG
         if: runner.os == 'macOS'
@@ -308,11 +308,11 @@ jobs:
           mkdir -p dist dmg
           VERSION="${{ steps.tag_base.outputs.value }}"
 
-          APP_BUNDLE="Dictation.app"
+          APP_BUNDLE="Vocoflow.app"
           CONTENTS_DIR="${APP_BUNDLE}/Contents"
           mkdir -p "${CONTENTS_DIR}/MacOS" "${CONTENTS_DIR}/Resources"
-          cp target/release/dictation "${CONTENTS_DIR}/MacOS/dictation"
-          chmod +x "${CONTENTS_DIR}/MacOS/dictation"
+          cp target/release/vocoflow "${CONTENTS_DIR}/MacOS/vocoflow"
+          chmod +x "${CONTENTS_DIR}/MacOS/vocoflow"
           cp -R resources "${CONTENTS_DIR}/Resources/resources"
 
           mkdir -p icon.iconset
@@ -333,12 +333,12 @@ jobs:
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
             <dict>
-              <key>CFBundleName</key><string>Dictation</string>
-              <key>CFBundleDisplayName</key><string>Dictation</string>
-              <key>CFBundleIdentifier</key><string>com.dictation.dictation</string>
+              <key>CFBundleName</key><string>Vocoflow</string>
+              <key>CFBundleDisplayName</key><string>Vocoflow</string>
+              <key>CFBundleIdentifier</key><string>com.vocoflow.vocoflow</string>
               <key>CFBundleVersion</key><string>1</string>
               <key>CFBundleShortVersionString</key><string>1.0</string>
-              <key>CFBundleExecutable</key><string>dictation</string>
+              <key>CFBundleExecutable</key><string>vocoflow</string>
               <key>CFBundlePackageType</key><string>APPL</string>
               <key>CFBundleIconFile</key><string>activity.icns</string>
             </dict>
@@ -346,14 +346,14 @@ jobs:
           PLIST
 
           cp -R "${APP_BUNDLE}" dmg/
-          hdiutil create -volname "Dictation" -srcfolder dmg -ov -format UDZO "dist/dictation-${VERSION}-macos.dmg"
+          hdiutil create -volname "Vocoflow" -srcfolder dmg -ov -format UDZO "dist/vocoflow-${VERSION}-macos.dmg"
 
       - name: Package Windows installer (NSIS)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item target/release/dictation.exe dist/dictation.exe
+          Copy-Item target/release/vocoflow.exe dist/vocoflow.exe
           Copy-Item assets/activity.ico dist/activity.ico
           Copy-Item resources dist/resources -Recurse -Force
 
@@ -363,12 +363,12 @@ jobs:
           }
 
           @'
-          !define APP_NAME "Dictation"
-          !define APP_EXE "dictation.exe"
+          !define APP_NAME "Vocoflow"
+          !define APP_EXE "vocoflow.exe"
           !define VERSION "${{ steps.tag_base.outputs.value }}"
           Name "${APP_NAME}"
-          OutFile "dictation-${VERSION}-windows-installer.exe"
-          InstallDir "$LOCALAPPDATA\Programs\Dictation"
+          OutFile "vocoflow-${VERSION}-windows-installer.exe"
+          InstallDir "$LOCALAPPDATA\Programs\Vocoflow"
           InstallDirRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "InstallLocation"
           Icon "dist\activity.ico"
           UninstallIcon "dist\activity.ico"
@@ -384,12 +384,12 @@ jobs:
             File /r "dist\resources\*"
             CreateDirectory "$SMPROGRAMS\${APP_NAME}"
             CreateShortcut "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\activity.ico" 0
-            CreateShortcut "$DESKTOP\Dictation.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\activity.ico" 0
+            CreateShortcut "$DESKTOP\Vocoflow.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\activity.ico" 0
             WriteUninstaller "$INSTDIR\Uninstall.exe"
 
             WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayName" "${APP_NAME}"
             WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayVersion" "${VERSION}"
-            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "Publisher" "dictation-rs"
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "Publisher" "vocoflow"
             WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "InstallLocation" "$INSTDIR"
             WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayIcon" "$INSTDIR\activity.ico,0"
             WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "UninstallString" '"$INSTDIR\Uninstall.exe"'
@@ -403,7 +403,7 @@ jobs:
 
             Delete "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk"
             RMDir "$SMPROGRAMS\${APP_NAME}"
-            Delete "$DESKTOP\Dictation.lnk"
+            Delete "$DESKTOP\Vocoflow.lnk"
             Delete "$INSTDIR\${APP_EXE}"
             Delete "$INSTDIR\activity.ico"
             RMDir /r "$INSTDIR\resources"
@@ -412,19 +412,19 @@ jobs:
 
             DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
 
-            MessageBox MB_ICONQUESTION|MB_YESNO "Do you also want to delete user data at $APPDATA\\dictation\\dictation?" IDNO keep_user_data
-              RMDir /r "$APPDATA\dictation\dictation"
-              RMDir "$APPDATA\dictation"
+            MessageBox MB_ICONQUESTION|MB_YESNO "Do you also want to delete user data at $APPDATA\\vocoflow\\vocoflow?" IDNO keep_user_data
+              RMDir /r "$APPDATA\vocoflow\vocoflow"
+              RMDir "$APPDATA\vocoflow"
             keep_user_data:
           SectionEnd
           '@ | Set-Content -Path installer.nsi
 
           & makensis installer.nsi
-          Move-Item "dictation-${{ steps.tag_base.outputs.value }}-windows-installer.exe" "dist/dictation-${{ steps.tag_base.outputs.value }}-windows-installer.exe" -Force
+          Move-Item "vocoflow-${{ steps.tag_base.outputs.value }}-windows-installer.exe" "dist/vocoflow-${{ steps.tag_base.outputs.value }}-windows-installer.exe" -Force
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dictation-${{ steps.tag_base.outputs.value }}-${{ matrix.target }}-${{ github.sha }}
+          name: vocoflow-${{ steps.tag_base.outputs.value }}-${{ matrix.target }}-${{ github.sha }}
           path: dist/
           if-no-files-found: error

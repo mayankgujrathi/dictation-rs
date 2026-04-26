@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use crate::settings;
 
 #[cfg(target_os = "windows")]
-const AUTOSTART_VALUE_NAME: &str = "dictation-rs";
+const AUTOSTART_VALUE_NAME: &str = "vocoflow";
 
 pub fn sync_from_settings() -> Result<(), String> {
   let enable = settings::current().start_on_login;
@@ -73,7 +73,7 @@ fn enable_autostart() -> Result<(), String> {
   }
 
   let content = format!(
-    "[Desktop Entry]\nType=Application\nName=dictation-rs\nExec={}\nTerminal=false\nX-GNOME-Autostart-enabled=true\n",
+    "[Desktop Entry]\nType=Application\nName=vocoflow\nExec={}\nTerminal=false\nX-GNOME-Autostart-enabled=true\n",
     exe.display()
   );
   fs::write(path, content)
@@ -102,7 +102,7 @@ fn linux_autostart_file() -> Result<PathBuf, String> {
     home
       .join(".config")
       .join("autostart")
-      .join("dictation-rs.desktop"),
+      .join("vocoflow.desktop"),
   )
 }
 
@@ -123,7 +123,7 @@ fn enable_autostart() -> Result<(), String> {
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.dictation.dictation</string>
+  <string>com.vocoflow.vocoflow</string>
   <key>ProgramArguments</key>
   <array>
     <string>{}</string>
@@ -165,7 +165,7 @@ fn macos_launch_agent_file() -> Result<PathBuf, String> {
     home
       .join("Library")
       .join("LaunchAgents")
-      .join("com.dictation.dictation.plist"),
+      .join("com.vocoflow.vocoflow.plist"),
   )
 }
 

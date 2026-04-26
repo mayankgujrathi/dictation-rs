@@ -1,4 +1,4 @@
-//! Dictation library
+//! Vocoflow library
 //!
 //! Core audio processing functionality.
 

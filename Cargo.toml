@@ -1,6 +1,6 @@
 [package]
-name = "dictation"
-version = "0.0.1"
+name = "vocoflow"
+version = "0.0.2"
 edition = "2024"
 
 [features]

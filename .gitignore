@@ -3,7 +3,7 @@
 
 # Audio recordings
 recording.wav
-dictation_temp.wav
+vocoflow_temp.wav
 
 # Temporary files
 *.tmp

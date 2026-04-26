@@ -210,7 +210,7 @@ fn is_cache_entry_expired(
 }
 
 fn model_base_dir() -> std::path::PathBuf {
-  ProjectDirs::from("com", "dictation", "dictation")
+  ProjectDirs::from("com", "vocoflow", "vocoflow")
     .map(|dirs| dirs.data_dir().to_path_buf())
     .unwrap_or_else(|| {
       std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir())
@@ -749,7 +749,7 @@ fn run_model_download(progress: Arc<AtomicU32>) {
     .connect_timeout(Duration::from_secs(15))
     .timeout(Duration::from_secs(600))
     .redirect(Policy::limited(10))
-    .user_agent("dictation-rs/0.1")
+    .user_agent("vocoflow/0.1")
     .build()
   {
     Ok(client) => client,

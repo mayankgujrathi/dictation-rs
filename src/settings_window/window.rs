@@ -50,7 +50,7 @@ const SETTINGS_NOT_FOUND_HTML: &str = r#"<!doctype html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Dictation Settings</title>
+    <title>Vocoflow Settings</title>
     <style>
       body {
         margin: 0;
@@ -354,10 +354,9 @@ pub fn open_settings_window() {
 
 pub fn run_settings_process() -> Result<(), String> {
   let instance =
-    SingleInstance::new("dictation-rs-settings-window-single-instance")
-      .map_err(|e| {
-        format!("failed to create settings process instance lock: {e}")
-      })?;
+    SingleInstance::new("vocoflow-settings-window-single-instance").map_err(
+      |e| format!("failed to create settings process instance lock: {e}"),
+    )?;
   if !instance.is_single() {
     info!("settings window process already running; exiting duplicate request");
     return Ok(());
@@ -409,10 +408,10 @@ impl ApplicationHandler for SettingsWindowApp {
     };
 
     let mut webview_builder = WebViewBuilder::new()
-      .with_custom_protocol("dictation".into(), |_webview_id, request| {
+      .with_custom_protocol("vocoflow".into(), |_webview_id, request| {
         handle_settings_protocol_request(&request)
       })
-      .with_url("dictation://localhost/settings/index.html")
+      .with_url("vocoflow://localhost/settings/index.html")
       .with_ipc_handler(|request| {
         bridge::handle_ipc(request);
       });

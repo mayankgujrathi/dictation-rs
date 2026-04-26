@@ -1439,40 +1439,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dictation"
-version = "0.0.1"
-dependencies = [
- "active-win-pos-rs",
- "arboard",
- "async-openai",
- "cpal",
- "directories",
- "eframe",
- "enigo",
- "gtk",
- "hound",
- "image 0.25.10",
- "rdev",
- "reqwest",
- "serde",
- "serde_json",
- "single-instance",
- "tempfile",
- "tokio",
- "tracing",
- "tracing-appender",
- "tracing-chrome",
- "tracing-subscriber",
- "transcribe-rs",
- "tray-icon",
- "windows-sys 0.59.0",
- "winit 0.30.13",
- "winreg",
- "winres",
- "wry",
-]
-
-[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6556,6 +6522,40 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "vocoflow"
+version = "0.0.2"
+dependencies = [
+ "active-win-pos-rs",
+ "arboard",
+ "async-openai",
+ "cpal",
+ "directories",
+ "eframe",
+ "enigo",
+ "gtk",
+ "hound",
+ "image 0.25.10",
+ "rdev",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "single-instance",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-appender",
+ "tracing-chrome",
+ "tracing-subscriber",
+ "transcribe-rs",
+ "tray-icon",
+ "windows-sys 0.59.0",
+ "winit 0.30.13",
+ "winreg",
+ "winres",
+ "wry",
+]
 
 [[package]]
 name = "waker-fn"

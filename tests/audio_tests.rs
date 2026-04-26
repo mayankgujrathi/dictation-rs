@@ -2,12 +2,12 @@
 //!
 //! Tests for pure functions and logic in the audio processing pipeline.
 
-use dictation::audio::{
+use std::f32::consts::PI;
+use vocoflow::audio::{
   calculate_rms_volume, estimate_noise_floor, limit_peaks,
   normalize_target_rms, process_audio_for_saving, recording_output_path,
   remove_background_noise, tame_high_frequency_hiss,
 };
-use std::f32::consts::PI;
 
 /// Calculate RMS without the volume scaling (returns raw f32)
 fn calculate_rms(samples: &[f32]) -> f32 {
@@ -341,10 +341,10 @@ mod mono_conversion_tests {
 
 #[cfg(test)]
 mod recording_state_tests {
-  use dictation::audio::RecordingState;
   use std::sync::atomic::Ordering;
   use std::thread;
   use std::time::Duration;
+  use vocoflow::audio::RecordingState;
 
   #[test]
   fn test_recording_state_initialization() {

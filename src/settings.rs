@@ -78,7 +78,7 @@ impl Default for LoggingSettings {
 static SETTINGS: OnceLock<RwLock<AppSettings>> = OnceLock::new();
 
 pub fn data_dir() -> PathBuf {
-  ProjectDirs::from("com", "dictation", "dictation")
+  ProjectDirs::from("com", "vocoflow", "vocoflow")
     .map(|dirs| dirs.data_dir().to_path_buf())
     .unwrap_or_else(|| {
       std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir())
@@ -291,7 +291,7 @@ mod tests {
   #[test]
   fn test_parse_and_backfill_settings_writes_missing_transcription() {
     let unique = format!(
-      "dictation_settings_test_{}",
+      "vocoflow_settings_test_{}",
       std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
