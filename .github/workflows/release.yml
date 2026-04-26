@@ -596,4 +596,28 @@ jobs:
           WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
         run: |
           if (-not $env:WINGET_TOKEN) { throw "Missing WINGET_TOKEN secret" }
-          .\wingetcreate.exe update mayankgujrathi.vocoflow --version "${{ steps.meta.outputs.version }}" --urls "${{ steps.meta.outputs.url }}" --submit --token "$env:WINGET_TOKEN"
+          $packageId = "mayankgujrathi.vocoflow"
+          $version = "${{ steps.meta.outputs.version }}"
+          $url = "${{ steps.meta.outputs.url }}"
+
+          Write-Host "Attempting WinGet update for $packageId $version"
+          $updateOutput = & .\wingetcreate.exe update $packageId --version "$version" --urls "$url" --submit --token "$env:WINGET_TOKEN" 2>&1
+          $updateExit = $LASTEXITCODE
+          $updateText = ($updateOutput | Out-String)
+          Write-Host $updateText
+
+          if ($updateExit -eq 0) {
+            Write-Host "WinGet update submitted successfully."
+            exit 0
+          }
+
+          if ($updateText -match "was not found") {
+            Write-Warning "Package manifest not found in winget-pkgs. Falling back to first-time 'new' submission."
+            & .\wingetcreate.exe new $packageId --version "$version" --urls "$url" --submit --token "$env:WINGET_TOKEN"
+            if ($LASTEXITCODE -ne 0) {
+              throw "wingetcreate new failed with exit code $LASTEXITCODE"
+            }
+            Write-Host "WinGet new-package submission completed successfully."
+          } else {
+            throw "wingetcreate update failed with exit code $updateExit"
+          }
