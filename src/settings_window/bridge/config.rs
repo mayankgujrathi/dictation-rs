@@ -24,6 +24,21 @@ pub static ROUTES: &[RouteDef] = route_table!(
     super::features::settings_get_transcription::handle
   ),
   (
+    "GET",
+    "/settings/about/logs_dir",
+    super::features::settings_get_about_logs_dir::handle
+  ),
+  (
+    "POST",
+    "/settings/about/open_logs_dir",
+    super::features::settings_open_about_logs_dir::handle
+  ),
+  (
+    "POST",
+    "/settings/reset/defaults",
+    super::features::settings_reset_defaults::handle
+  ),
+  (
     "POST",
     "/settings/update/start_on_login",
     super::features::settings_update_start_on_login::handle

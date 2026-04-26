@@ -1,6 +1,7 @@
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -23,6 +24,10 @@ fn data_dir() -> PathBuf {
 
 fn logs_dir() -> PathBuf {
   data_dir().join("logs")
+}
+
+pub fn logs_dir_path() -> PathBuf {
+  logs_dir()
 }
 
 fn traces_dir() -> PathBuf {
@@ -173,4 +178,36 @@ pub fn apply_runtime_logging_settings() {
   let app_log_path = logs_dir().join("application.log");
   let _ = trim_to_last_n_lines(&app_log_path, cfg.app_log_max_lines);
   let _ = prune_old_trace_files(&traces_dir(), cfg.trace_file_limit);
+}
+
+pub fn open_logs_dir_in_file_manager() -> Result<PathBuf, String> {
+  let dir = logs_dir();
+  fs::create_dir_all(&dir)
+    .map_err(|e| format!("create logs dir failed: {e}"))?;
+
+  #[cfg(target_os = "windows")]
+  {
+    Command::new("explorer")
+      .arg(&dir)
+      .spawn()
+      .map_err(|e| format!("open logs dir in explorer failed: {e}"))?;
+  }
+
+  #[cfg(target_os = "macos")]
+  {
+    Command::new("open")
+      .arg(&dir)
+      .spawn()
+      .map_err(|e| format!("open logs dir in Finder failed: {e}"))?;
+  }
+
+  #[cfg(all(unix, not(target_os = "macos")))]
+  {
+    Command::new("xdg-open")
+      .arg(&dir)
+      .spawn()
+      .map_err(|e| format!("open logs dir with xdg-open failed: {e}"))?;
+  }
+
+  Ok(dir)
 }

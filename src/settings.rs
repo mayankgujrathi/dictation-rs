@@ -253,6 +253,37 @@ pub fn update_transcription(
   Ok(current())
 }
 
+pub fn reset_start_on_login_default() -> Result<AppSettings, String> {
+  update_start_on_login(AppSettings::default().start_on_login)
+}
+
+pub fn reset_logging_default() -> Result<AppSettings, String> {
+  update_logging(LoggingSettings::default())
+}
+
+pub fn reset_transcription_default() -> Result<AppSettings, String> {
+  update_transcription(TranscriptionSettings::default())
+}
+
+pub fn reset_all_defaults() -> Result<AppSettings, String> {
+  initialize();
+  let defaults = AppSettings::default();
+  let Some(lock) = SETTINGS.get() else {
+    return Err("settings store unavailable".to_string());
+  };
+
+  {
+    let mut guard = lock
+      .write()
+      .map_err(|_| "settings lock poisoned".to_string())?;
+    *guard = defaults.clone();
+  }
+
+  write_settings(&settings_path(), &defaults)?;
+  let _ = refresh_from_disk()?;
+  Ok(current())
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

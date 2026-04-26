@@ -1,92 +1,28 @@
-:root {
-  color-scheme: dark;
-  font-family: Inter, 'Segoe UI', Arial, sans-serif;
-}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-* {
-  box-sizing: border-box;
-}
+@layer base {
+  :root {
+    color-scheme: dark;
+    font-family: Inter, 'Segoe UI', Arial, sans-serif;
+  }
 
-body {
-  margin: 0;
-  background: #111827;
-  color: #e5e7eb;
-}
+  * {
+    box-sizing: border-box;
+  }
 
-#root {
-  min-height: 100vh;
-}
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background:
+      radial-gradient(1100px 600px at 0% 0%, rgba(124, 58, 237, 0.25), transparent 60%),
+      radial-gradient(900px 500px at 100% 10%, rgba(6, 182, 212, 0.2), transparent 55%),
+      #0b1020;
+    color: #e2e8f0;
+  }
 
-.page {
-  padding: 20px;
-}
-
-h1 {
-  margin: 0;
-  font-size: 20px;
-}
-
-.subtitle {
-  margin: 8px 0 0;
-  font-size: 13px;
-  color: #93a0b5;
-}
-
-.card {
-  margin-top: 14px;
-  border: 1px solid #374151;
-  border-radius: 10px;
-  padding: 14px;
-  background: #1f2937;
-}
-
-.row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.row + .row {
-  margin-top: 10px;
-}
-
-.wrap {
-  flex-wrap: wrap;
-}
-
-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-}
-
-input,
-button {
-  border: 1px solid #4b5563;
-  border-radius: 8px;
-  background: #0f172a;
-  color: #e5e7eb;
-  padding: 7px 10px;
-  font-size: 13px;
-}
-
-button {
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: #6b7280;
-}
-
-.response {
-  margin: 12px 0 0;
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px solid #334155;
-  background: #0b1220;
-  color: #bfdbfe;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 12px;
+  #root {
+    min-height: 100vh;
+  }
 }

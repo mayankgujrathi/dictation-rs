@@ -1,0 +1,165 @@
+export type IpcMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
+
+export type IpcRequest<TPayload> = {
+  request_id?: string
+  method: IpcMethod
+  endpoint: string
+  payload: TPayload
+}
+
+export type IpcError = {
+  code?: string
+  message?: string
+  field?: string
+  expected?: string
+  received?: string
+}
+
+export type IpcResponse<TPayload> = {
+  request_id?: string
+  ok: boolean
+  kind: string
+  payload: TPayload
+  error?: IpcError
+}
+
+import type { AppSettings, LoggingSettings, TranscriptionSettings } from './types/settings'
+
+export type SettingsResponse = { settings: AppSettings }
+export type AboutLogsDirResponse = { logs_dir: string }
+
+const makeRequestId = (): string => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return String(Date.now())
+}
+
+const normalizeError = (errorLike: unknown): Required<Pick<IpcError, 'code' | 'message'>> & IpcError => {
+  if (typeof errorLike === 'string') {
+    return { code: 'UNKNOWN', message: errorLike }
+  }
+  if (!errorLike || typeof errorLike !== 'object') {
+    return { code: 'UNKNOWN', message: 'Unknown IPC error' }
+  }
+
+  const candidate = errorLike as IpcError
+  return {
+    code: candidate.code || 'UNKNOWN',
+    message: candidate.message || 'IPC request failed',
+    field: candidate.field,
+    expected: candidate.expected,
+    received:
+      typeof candidate.received === 'string'
+        ? candidate.received
+        : candidate.received != null
+          ? JSON.stringify(candidate.received)
+          : undefined,
+  }
+}
+
+const formatErrorForUi = (error: IpcError): string => {
+  const lines = [`code: ${error.code || 'UNKNOWN'}`, `message: ${error.message || 'IPC request failed'}`]
+  if (error.field) lines.push(`field: ${error.field}`)
+  if (error.expected) lines.push(`expected: ${error.expected}`)
+  if (error.received) lines.push(`received: ${error.received}`)
+  return lines.join('\n')
+}
+
+export const sendIpc = async <TPayloadReq, TPayloadRes>(
+  request: IpcRequest<TPayloadReq>,
+): Promise<IpcResponse<TPayloadRes>> => {
+  const request_id = request.request_id || makeRequestId()
+  const body = JSON.stringify({ ...request, request_id })
+
+  return await new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', '/ipc', true)
+    xhr.setRequestHeader('content-type', 'application/json')
+    xhr.timeout = 10000
+
+    xhr.onload = () => {
+      let parsed: IpcResponse<TPayloadRes> | null = null
+
+      try {
+        parsed = JSON.parse(xhr.responseText || '{}') as IpcResponse<TPayloadRes>
+      } catch {
+        reject(new Error(`IPC response was not valid JSON (status=${xhr.status}, request_id=${request_id})`))
+        return
+      }
+
+      if (xhr.status >= 400 || !parsed?.ok) {
+        const normalized = normalizeError(parsed?.error || parsed)
+        reject(new Error(formatErrorForUi(normalized)))
+        return
+      }
+
+      resolve(parsed)
+    }
+
+    xhr.onerror = () => reject(new Error(`IPC request failed (network error, request_id=${request_id})`))
+    xhr.ontimeout = () => reject(new Error(`IPC request timed out for request_id=${request_id}`))
+    xhr.send(body)
+  })
+}
+
+export const getAllSettings = async (): Promise<AppSettings> => {
+  const reply = await sendIpc<Record<string, never>, SettingsResponse>({ method: 'GET', endpoint: '/settings', payload: {} })
+  return reply.payload.settings
+}
+
+export const updateStartOnLogin = async (start_on_login: boolean): Promise<AppSettings> => {
+  const reply = await sendIpc<{ start_on_login: boolean }, SettingsResponse>({
+    method: 'POST',
+    endpoint: '/settings/update/start_on_login',
+    payload: { start_on_login },
+  })
+  return reply.payload.settings
+}
+
+export const updateLogging = async (logging: LoggingSettings): Promise<AppSettings> => {
+  const reply = await sendIpc<{ logging: LoggingSettings }, SettingsResponse>({
+    method: 'POST',
+    endpoint: '/settings/update/logging',
+    payload: { logging },
+  })
+  return reply.payload.settings
+}
+
+export const updateTranscription = async (transcription: TranscriptionSettings): Promise<AppSettings> => {
+  const reply = await sendIpc<{ transcription: TranscriptionSettings }, SettingsResponse>({
+    method: 'POST',
+    endpoint: '/settings/update/transcription',
+    payload: { transcription },
+  })
+  return reply.payload.settings
+}
+
+export const getAboutLogsDir = async (): Promise<string> => {
+  const reply = await sendIpc<Record<string, never>, AboutLogsDirResponse>({
+    method: 'GET',
+    endpoint: '/settings/about/logs_dir',
+    payload: {},
+  })
+  return reply.payload.logs_dir
+}
+
+export const openAboutLogsDir = async (): Promise<string> => {
+  const reply = await sendIpc<Record<string, never>, AboutLogsDirResponse>({
+    method: 'POST',
+    endpoint: '/settings/about/open_logs_dir',
+    payload: {},
+  })
+  return reply.payload.logs_dir
+}
+
+export const resetDefaults = async (
+  scope: 'general' | 'logging' | 'transcription' | 'all',
+): Promise<AppSettings> => {
+  const reply = await sendIpc<{ scope: 'general' | 'logging' | 'transcription' | 'all' }, SettingsResponse>({
+    method: 'POST',
+    endpoint: '/settings/reset/defaults',
+    payload: { scope },
+  })
+  return reply.payload.settings
+}
