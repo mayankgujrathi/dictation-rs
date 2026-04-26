@@ -1,6 +1,7 @@
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
+#[cfg(not(target_os = "windows"))]
 use std::process::Command;
 use std::sync::Mutex;
 use std::sync::OnceLock;
@@ -12,6 +13,9 @@ use tracing_chrome::FlushGuard;
 use tracing_subscriber::Layer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::UI::Shell::ShellExecuteW;
 
 use crate::settings;
 
@@ -36,6 +40,35 @@ fn traces_dir() -> PathBuf {
 
 fn debug_enabled() -> bool {
   settings::current().logging.enable_debug_logs
+}
+
+#[cfg(target_os = "windows")]
+fn to_wide_null(s: &str) -> Vec<u16> {
+  s.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+#[cfg(target_os = "windows")]
+fn shell_execute_open(target: &str) -> Result<(), String> {
+  let operation = to_wide_null("open");
+  let file = to_wide_null(target);
+
+  let result = unsafe {
+    ShellExecuteW(
+      std::ptr::null_mut(),
+      operation.as_ptr(),
+      file.as_ptr(),
+      std::ptr::null(),
+      std::ptr::null(),
+      1, // SW_SHOWNORMAL
+    )
+  };
+
+  let code = result as isize;
+  if code <= 32 {
+    return Err(format!("ShellExecuteW failed with code {code}"));
+  }
+
+  Ok(())
 }
 
 fn trim_to_last_n_lines(path: &Path, max_lines: usize) -> Result<(), String> {
@@ -187,10 +220,8 @@ pub fn open_logs_dir_in_file_manager() -> Result<PathBuf, String> {
 
   #[cfg(target_os = "windows")]
   {
-    Command::new("explorer")
-      .arg(&dir)
-      .spawn()
-      .map_err(|e| format!("open logs dir in explorer failed: {e}"))?;
+    shell_execute_open(&dir.display().to_string())
+      .map_err(|e| format!("open logs dir in Explorer failed: {e}"))?;
   }
 
   #[cfg(target_os = "macos")]
@@ -210,4 +241,30 @@ pub fn open_logs_dir_in_file_manager() -> Result<PathBuf, String> {
   }
 
   Ok(dir)
+}
+
+pub fn open_url_in_default_browser(url: &str) -> Result<(), String> {
+  #[cfg(target_os = "windows")]
+  {
+    shell_execute_open(url)
+      .map_err(|e| format!("open url in browser failed (windows): {e}"))?;
+  }
+
+  #[cfg(target_os = "macos")]
+  {
+    Command::new("open")
+      .arg(url)
+      .spawn()
+      .map_err(|e| format!("open url in browser failed (macos): {e}"))?;
+  }
+
+  #[cfg(all(unix, not(target_os = "macos")))]
+  {
+    Command::new("xdg-open")
+      .arg(url)
+      .spawn()
+      .map_err(|e| format!("open url in browser failed (linux): {e}"))?;
+  }
+
+  Ok(())
 }

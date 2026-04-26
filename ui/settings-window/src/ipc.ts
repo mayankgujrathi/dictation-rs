@@ -27,6 +27,7 @@ import type { AppSettings, LoggingSettings, TranscriptionSettings } from './type
 
 export type SettingsResponse = { settings: AppSettings }
 export type AboutLogsDirResponse = { logs_dir: string }
+export type AboutOpenExternalUrlResponse = { url: string }
 
 const makeRequestId = (): string => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -151,6 +152,15 @@ export const openAboutLogsDir = async (): Promise<string> => {
     payload: {},
   })
   return reply.payload.logs_dir
+}
+
+export const openAboutExternalUrl = async (url: string): Promise<string> => {
+  const reply = await sendIpc<{ url: string }, AboutOpenExternalUrlResponse>({
+    method: 'POST',
+    endpoint: '/settings/about/open_external_url',
+    payload: { url },
+  })
+  return reply.payload.url
 }
 
 export const resetDefaults = async (

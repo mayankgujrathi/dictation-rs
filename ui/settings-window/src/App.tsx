@@ -4,6 +4,7 @@ import { FaCircleInfo, FaGear, FaMicrophoneLines, FaSliders } from 'react-icons/
 import {
   getAboutLogsDir,
   getAllSettings,
+  openAboutExternalUrl,
   openAboutLogsDir,
   resetDefaults,
   updateLogging,
@@ -122,6 +123,15 @@ function App() {
     }
   }
 
+  const openExternalLink = async (url: string) => {
+    try {
+      await openAboutExternalUrl(url)
+      setStatus('Opened link in default browser.')
+    } catch (error) {
+      setStatus(`Open link failed: ${String(error)}`)
+    }
+  }
+
   const runReset = async (scope: 'general' | 'logging' | 'transcription' | 'all') => {
     setSavingKey(scope)
     try {
@@ -177,7 +187,14 @@ function App() {
           />
         )}
 
-        {activeTab === 'about' && <AboutSection logsDir={logsDir} onOpenLogsDir={openLogs} opening={savingKey === 'about'} />}
+        {activeTab === 'about' && (
+          <AboutSection
+            logsDir={logsDir}
+            onOpenLogsDir={openLogs}
+            onOpenExternalUrl={(url) => void openExternalLink(url)}
+            opening={savingKey === 'about'}
+          />
+        )}
       </div>
 
       <footer className="mt-6 rounded-lg border border-slate-700/60 bg-slate-900/40 px-3 py-2 text-xs text-slate-300">{status}</footer>

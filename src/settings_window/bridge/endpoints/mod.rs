@@ -3,6 +3,7 @@ pub mod settings_get_all;
 pub mod settings_get_logging;
 pub mod settings_get_start_on_login;
 pub mod settings_get_transcription;
+pub mod settings_open_about_external_url;
 pub mod settings_open_about_logs_dir;
 pub mod settings_reset_defaults;
 pub mod settings_update_logging;

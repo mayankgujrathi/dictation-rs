@@ -35,6 +35,11 @@ pub static ROUTES: &[RouteDef] = route_table!(
   ),
   (
     "POST",
+    "/settings/about/open_external_url",
+    super::endpoints::settings_open_about_external_url::handle
+  ),
+  (
+    "POST",
     "/settings/reset/defaults",
     super::endpoints::settings_reset_defaults::handle
   ),
