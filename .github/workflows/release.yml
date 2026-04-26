@@ -613,7 +613,7 @@ jobs:
 
           if ($updateText -match "was not found") {
             Write-Warning "Package manifest not found in winget-pkgs. Falling back to first-time 'new' submission."
-            & .\wingetcreate.exe new $packageId --version "$version" --urls "$url" --submit --token "$env:WINGET_TOKEN"
+            & .\wingetcreate.exe new --token "$env:WINGET_TOKEN" -n "$url"
             if ($LASTEXITCODE -ne 0) {
               throw "wingetcreate new failed with exit code $LASTEXITCODE"
             }
