@@ -432,7 +432,7 @@ jobs:
           if (-not $redistFiles) {
             throw "No redistributable DLLs were discovered for packaging"
           }
-          $includeLines = $redistFiles | ForEach-Object { "            File \"dist\\redist\\$($_.Name)\"" }
+          $includeLines = $redistFiles | ForEach-Object { '            File "dist\redist\' + $_.Name + '"' }
           Set-Content -Path "dist/installer_redist.nsh" -Value $includeLines
 
           if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
