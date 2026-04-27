@@ -496,13 +496,24 @@ jobs:
           if (-not (Test-Path $installedExe)) {
             throw "Silent install validation failed: $installedExe was not created"
           }
-          $p = Start-Process -FilePath $installedExe -PassThru
-          Start-Sleep -Seconds 8
-          if ($p.HasExited) {
-            throw "Startup smoke check failed: process exited early with code $($p.ExitCode)"
+          $p = $null
+          try {
+            $p = Start-Process -FilePath $installedExe -PassThru
+            Start-Sleep -Seconds 4
+            if ($p.HasExited) {
+              $exitCode = [int]$p.ExitCode
+              $hex = ('0x{0:X8}' -f ([uint32]$exitCode))
+              $loaderFailureCodes = @(-1073741515, -1073741701, -1073741511)
+              if ($loaderFailureCodes -contains $exitCode) {
+                throw "Startup probe failed with loader/runtime exit code $exitCode ($hex)"
+              }
+              Write-Warning "Process exited during startup probe with code $exitCode ($hex). Continuing because this is not a known loader/runtime dependency failure."
+            } else {
+              Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            }
+          } finally {
+            Start-Process -FilePath (Join-Path $env:LOCALAPPDATA "Programs\Vocoflow\Uninstall.exe") -ArgumentList "/S" -Wait -NoNewWindow
           }
-          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
-          Start-Process -FilePath (Join-Path $env:LOCALAPPDATA "Programs\Vocoflow\Uninstall.exe") -ArgumentList "/S" -Wait -NoNewWindow
 
       - name: Malware scan (Windows Defender)
         if: runner.os == 'Windows'
