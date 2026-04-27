@@ -461,7 +461,7 @@ jobs:
             SetOutPath "$INSTDIR"
             File "dist\${APP_EXE}"
             File "dist\activity.ico"
-!include "dist\installer_redist.nsh"
+            !include "dist\installer_redist.nsh"
             SetOutPath "$INSTDIR\resources"
             File /r "dist\resources\*"
             CreateDirectory "$SMPROGRAMS\${APP_NAME}"
