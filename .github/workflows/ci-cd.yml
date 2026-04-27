@@ -358,40 +358,101 @@ jobs:
           Copy-Item resources dist/resources -Recurse -Force
 
           New-Item -ItemType Directory -Force -Path "dist/redist" | Out-Null
-          $crtCopied = $false
-          $candidateDirs = @()
-          if ($env:VCToolsRedistDir) {
-            $candidateDirs += (Join-Path $env:VCToolsRedistDir "x64\Microsoft.VC143.CRT")
+
+          function Get-PortableDependents([string]$binaryPath) {
+            $lines = & dumpbin /nologo /dependents $binaryPath 2>$null
+            if ($LASTEXITCODE -ne 0) { return @() }
+            $deps = @()
+            foreach ($line in $lines) {
+              $trim = $line.Trim()
+              if ($trim -match '^[A-Za-z0-9._-]+\.dll$') {
+                $deps += $trim.ToLowerInvariant()
+              }
+            }
+            $systemRegex = '^(api-ms-win-|ext-ms-win-|kernel32\.dll|user32\.dll|gdi32\.dll|advapi32\.dll|shell32\.dll|ole32\.dll|oleaut32\.dll|comdlg32\.dll|comctl32\.dll|rpcrt4\.dll|ucrtbase\.dll|ntdll\.dll|ws2_32\.dll|sechost\.dll|bcrypt\.dll|crypt32\.dll|shlwapi\.dll|setupapi\.dll|version\.dll|winmm\.dll|imm32\.dll|dwmapi\.dll|uxtheme\.dll|msvcrt\.dll)$'
+            return $deps | Where-Object { $_ -notmatch $systemRegex } | Sort-Object -Unique
           }
-          $candidateDirs += Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022" -Directory -ErrorAction SilentlyContinue |
+
+          $searchRoots = @(
+            (Resolve-Path "target/release").Path,
+            "$env:LOCALAPPDATA\ort.pyke.io"
+          )
+          if ($env:VCToolsRedistDir) {
+            $searchRoots += (Join-Path $env:VCToolsRedistDir "x64\Microsoft.VC143.CRT")
+          }
+          $searchRoots += Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022" -Directory -ErrorAction SilentlyContinue |
             ForEach-Object {
               Get-ChildItem (Join-Path $_.FullName "VC\Redist\MSVC") -Directory -ErrorAction SilentlyContinue |
                 Sort-Object Name -Descending |
                 ForEach-Object { Join-Path $_.FullName "x64\Microsoft.VC143.CRT" }
             }
+          $searchRoots = $searchRoots | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
 
-          foreach ($dir in $candidateDirs) {
-            if (-not (Test-Path $dir)) { continue }
-            $dlls = @("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll", "concrt140.dll")
-            $found = $true
-            foreach ($dll in $dlls) {
-              $src = Join-Path $dir $dll
-              if (Test-Path $src) {
-                Copy-Item $src "dist/redist/$dll" -Force
-              } else {
-                $found = $false
+          function Resolve-Dll([string]$dllName) {
+            foreach ($root in $searchRoots) {
+              $found = Get-ChildItem -Path $root -Filter $dllName -Recurse -File -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+              if ($found) { return $found.FullName }
+            }
+            return $null
+          }
+
+          function Is-SystemDll([string]$dllName) {
+            $name = $dllName.ToLowerInvariant()
+            if ($name.StartsWith("api-ms-win-") -or $name.StartsWith("ext-ms-win-")) {
+              return $true
+            }
+
+            $system32 = Join-Path $env:WINDIR "System32"
+            $syswow64 = Join-Path $env:WINDIR "SysWOW64"
+            if (Test-Path (Join-Path $system32 $name)) { return $true }
+            if (Test-Path (Join-Path $syswow64 $name)) { return $true }
+
+            $wellKnownSystemDlls = @(
+              "d3d12.dll", "dxgi.dll", "opengl32.dll", "dbghelp.dll", "uiautomationcore.dll", "bcryptprimitives.dll"
+            )
+            return $wellKnownSystemDlls -contains $name
+          }
+
+          $pending = [System.Collections.Generic.Queue[string]]::new()
+          $resolved = @{}
+          $missing = [System.Collections.Generic.List[string]]::new()
+          foreach ($dll in Get-PortableDependents "target/release/vocoflow.exe") { $pending.Enqueue($dll) }
+
+          while ($pending.Count -gt 0) {
+            $dll = $pending.Dequeue()
+            if ($resolved.ContainsKey($dll) -or $missing.Contains($dll)) { continue }
+            $path = Resolve-Dll $dll
+            if (-not $path) {
+              if (-not (Is-SystemDll $dll)) {
+                $missing.Add($dll)
+              }
+              continue
+            }
+            $resolved[$dll] = $path
+            foreach ($sub in Get-PortableDependents $path) {
+              if (-not $resolved.ContainsKey($sub) -and -not $missing.Contains($sub)) {
+                $pending.Enqueue($sub)
               }
             }
-            if ($found) {
-              $crtCopied = $true
-              Write-Host "Copied VC++ runtime DLLs from $dir"
-              break
-            }
           }
 
-          if (-not $crtCopied) {
-            throw "Failed to locate VC++ runtime DLLs for bundling"
+          $resolved.GetEnumerator() | Sort-Object Name | ForEach-Object {
+            Copy-Item $_.Value (Join-Path "dist/redist" $_.Name) -Force
           }
+          $resolved.GetEnumerator() | Sort-Object Name | ForEach-Object { "RESOLVED: $($_.Name) -> $($_.Value)" } |
+            Set-Content "dist/windows-runtime-deps.txt"
+          if ($missing.Count -gt 0) {
+            ($missing | Sort-Object -Unique | ForEach-Object { "MISSING: $_" }) | Add-Content "dist/windows-runtime-deps.txt"
+            throw "Missing required runtime DLL(s): $($missing -join ', ')"
+          }
+
+          $redistFiles = Get-ChildItem "dist/redist" -Filter "*.dll" -File | Sort-Object Name
+          if (-not $redistFiles) {
+            throw "No redistributable DLLs were discovered for packaging"
+          }
+          $includeLines = $redistFiles | ForEach-Object { '            File "dist\redist\' + $_.Name + '"' }
+          Set-Content -Path "dist/installer_redist.nsh" -Value $includeLines
 
           if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
             choco install nsis -y --no-progress
@@ -419,10 +480,7 @@ jobs:
             SetOutPath "$INSTDIR"
             File "dist\${APP_EXE}"
             File "dist\activity.ico"
-            File "dist\redist\vcruntime140.dll"
-            File "dist\redist\vcruntime140_1.dll"
-            File "dist\redist\msvcp140.dll"
-            File "dist\redist\concrt140.dll"
+            !include "dist\installer_redist.nsh"
             SetOutPath "$INSTDIR\resources"
             File /r "dist\resources\*"
             CreateDirectory "$SMPROGRAMS\${APP_NAME}"
@@ -482,7 +540,24 @@ jobs:
           if (-not (Test-Path $installedExe)) {
             throw "Silent install validation failed: $installedExe was not created"
           }
-          Start-Process -FilePath (Join-Path $env:LOCALAPPDATA "Programs\Vocoflow\Uninstall.exe") -ArgumentList "/S" -Wait -NoNewWindow
+          $p = $null
+          try {
+            $p = Start-Process -FilePath $installedExe -PassThru
+            Start-Sleep -Seconds 4
+            if ($p.HasExited) {
+              $exitCode = [int]$p.ExitCode
+              $hex = ('0x{0:X8}' -f ([uint32]$exitCode))
+              $loaderFailureCodes = @(-1073741515, -1073741701, -1073741511)
+              if ($loaderFailureCodes -contains $exitCode) {
+                throw "Startup probe failed with loader/runtime exit code $exitCode ($hex)"
+              }
+              Write-Warning "Process exited during startup probe with code $exitCode ($hex). Continuing because this is not a known loader/runtime dependency failure."
+            } else {
+              Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            }
+          } finally {
+            Start-Process -FilePath (Join-Path $env:LOCALAPPDATA "Programs\Vocoflow\Uninstall.exe") -ArgumentList "/S" -Wait -NoNewWindow
+          }
 
       - name: Malware scan (Windows Defender)
         if: runner.os == 'Windows'
