@@ -350,6 +350,23 @@ jobs:
             return $null
           }
 
+          function Is-SystemDll([string]$dllName) {
+            $name = $dllName.ToLowerInvariant()
+            if ($name.StartsWith("api-ms-win-") -or $name.StartsWith("ext-ms-win-")) {
+              return $true
+            }
+
+            $system32 = Join-Path $env:WINDIR "System32"
+            $syswow64 = Join-Path $env:WINDIR "SysWOW64"
+            if (Test-Path (Join-Path $system32 $name)) { return $true }
+            if (Test-Path (Join-Path $syswow64 $name)) { return $true }
+
+            $wellKnownSystemDlls = @(
+              "d3d12.dll", "dxgi.dll", "opengl32.dll", "dbghelp.dll", "uiautomationcore.dll", "bcryptprimitives.dll"
+            )
+            return $wellKnownSystemDlls -contains $name
+          }
+
           $pending = [System.Collections.Generic.Queue[string]]::new()
           $resolved = @{}
           $missing = [System.Collections.Generic.List[string]]::new()
@@ -360,7 +377,9 @@ jobs:
             if ($resolved.ContainsKey($dll) -or $missing.Contains($dll)) { continue }
             $path = Resolve-Dll $dll
             if (-not $path) {
-              $missing.Add($dll)
+              if (-not (Is-SystemDll $dll)) {
+                $missing.Add($dll)
+              }
               continue
             }
             $resolved[$dll] = $path
