@@ -195,13 +195,6 @@ jobs:
           cargo -V
           if ($env:CUDA_PATH) { Write-Host "CUDA_PATH=$env:CUDA_PATH" }
 
-      - name: Enable static CRT for Windows jobs
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          "RUSTFLAGS=-C target-feature=+crt-static" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Enabled static CRT via RUSTFLAGS for Windows job"
-
       - name: Resolve final cargo features
         id: cargo_features
         shell: bash
@@ -364,6 +357,42 @@ jobs:
           Copy-Item assets/activity.ico dist/activity.ico
           Copy-Item resources dist/resources -Recurse -Force
 
+          New-Item -ItemType Directory -Force -Path "dist/redist" | Out-Null
+          $crtCopied = $false
+          $candidateDirs = @()
+          if ($env:VCToolsRedistDir) {
+            $candidateDirs += (Join-Path $env:VCToolsRedistDir "x64\Microsoft.VC143.CRT")
+          }
+          $candidateDirs += Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022" -Directory -ErrorAction SilentlyContinue |
+            ForEach-Object {
+              Get-ChildItem (Join-Path $_.FullName "VC\Redist\MSVC") -Directory -ErrorAction SilentlyContinue |
+                Sort-Object Name -Descending |
+                ForEach-Object { Join-Path $_.FullName "x64\Microsoft.VC143.CRT" }
+            }
+
+          foreach ($dir in $candidateDirs) {
+            if (-not (Test-Path $dir)) { continue }
+            $dlls = @("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll", "concrt140.dll")
+            $found = $true
+            foreach ($dll in $dlls) {
+              $src = Join-Path $dir $dll
+              if (Test-Path $src) {
+                Copy-Item $src "dist/redist/$dll" -Force
+              } else {
+                $found = $false
+              }
+            }
+            if ($found) {
+              $crtCopied = $true
+              Write-Host "Copied VC++ runtime DLLs from $dir"
+              break
+            }
+          }
+
+          if (-not $crtCopied) {
+            throw "Failed to locate VC++ runtime DLLs for bundling"
+          }
+
           if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
             choco install nsis -y --no-progress
             $env:PATH = "C:\Program Files (x86)\NSIS;C:\Program Files\NSIS;$env:PATH"
@@ -390,6 +419,10 @@ jobs:
             SetOutPath "$INSTDIR"
             File "dist\${APP_EXE}"
             File "dist\activity.ico"
+            File "dist\redist\vcruntime140.dll"
+            File "dist\redist\vcruntime140_1.dll"
+            File "dist\redist\msvcp140.dll"
+            File "dist\redist\concrt140.dll"
             SetOutPath "$INSTDIR\resources"
             File /r "dist\resources\*"
             CreateDirectory "$SMPROGRAMS\${APP_NAME}"
