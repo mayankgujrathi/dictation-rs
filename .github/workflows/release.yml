@@ -315,15 +315,15 @@ jobs:
           function Get-PortableDependents([string]$binaryPath) {
             $lines = & dumpbin /nologo /dependents $binaryPath 2>$null
             if ($LASTEXITCODE -ne 0) { return @() }
-            $matches = @()
+            $deps = @()
             foreach ($line in $lines) {
               $trim = $line.Trim()
               if ($trim -match '^[A-Za-z0-9._-]+\.dll$') {
-                $matches += $trim.ToLowerInvariant()
+                $deps += $trim.ToLowerInvariant()
               }
             }
             $systemRegex = '^(api-ms-win-|ext-ms-win-|kernel32\.dll|user32\.dll|gdi32\.dll|advapi32\.dll|shell32\.dll|ole32\.dll|oleaut32\.dll|comdlg32\.dll|comctl32\.dll|rpcrt4\.dll|ucrtbase\.dll|ntdll\.dll|ws2_32\.dll|sechost\.dll|bcrypt\.dll|crypt32\.dll|shlwapi\.dll|setupapi\.dll|version\.dll|winmm\.dll|imm32\.dll|dwmapi\.dll|uxtheme\.dll|msvcrt\.dll)$'
-            return $matches | Where-Object { $_ -notmatch $systemRegex } | Sort-Object -Unique
+            return $deps | Where-Object { $_ -notmatch $systemRegex } | Sort-Object -Unique
           }
 
           $searchRoots = @(
