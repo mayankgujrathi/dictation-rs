@@ -177,6 +177,13 @@ jobs:
           cargo -V
           if ($env:CUDA_PATH) { Write-Host "CUDA_PATH=$env:CUDA_PATH" }
 
+      - name: Enable static CRT for Windows artifacts
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "RUSTFLAGS=-C target-feature=+crt-static" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Enabled static CRT via RUSTFLAGS for Windows build"
+
       - name: Resolve final cargo features
         id: cargo_features
         shell: bash
