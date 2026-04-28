@@ -28,7 +28,7 @@ jobs:
             target: linux
           - os: windows-latest
             target: windows
-          - os: macos-latest
+          - os: macos-14
             target: macos
 
     env:
@@ -300,6 +300,71 @@ jobs:
           chmod +x "${APPIMAGE_TOOL}"
           ARCH=x86_64 ./${APPIMAGE_TOOL} --appimage-extract-and-run "${APPDIR}" "dist/vocoflow-${VERSION}-linux.AppImage"
 
+      - name: Smoke test Linux AppImage startup (tray/headless-safe)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APPIMAGE="dist/vocoflow-${{ steps.tag_base.outputs.value }}-linux.AppImage"
+          chmod +x "$APPIMAGE"
+
+          export XDG_RUNTIME_DIR="$(mktemp -d)"
+          export NO_AT_BRIDGE=1
+          export DICTATION_DISABLE_HOTKEY_LISTENER=1
+
+          LOG="linux-smoke.log"
+          "$APPIMAGE" >"$LOG" 2>&1 &
+          PID=$!
+          sleep 8
+
+          if ! kill -0 "$PID" 2>/dev/null; then
+            wait "$PID" || true
+            if grep -Eqi "error while loading shared libraries|symbol lookup error|No such file or directory|lib.*\.so.*not found" "$LOG"; then
+              echo "Linux smoke test failed due to runtime dependency error"
+              cat "$LOG"
+              exit 1
+            fi
+            echo "Linux smoke test process exited quickly; log follows"
+            cat "$LOG"
+            exit 1
+          fi
+
+          kill "$PID" || true
+          wait "$PID" || true
+          rm -rf "$XDG_RUNTIME_DIR"
+
+      - name: Health-check Linux AppImage
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APPIMAGE="dist/vocoflow-${{ steps.tag_base.outputs.value }}-linux.AppImage"
+          chmod +x "$APPIMAGE"
+          "$APPIMAGE" --health-check
+
+      - name: Verify Linux AppImage runtime dependencies (no unresolved libs)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APPIMAGE="dist/vocoflow-${{ steps.tag_base.outputs.value }}-linux.AppImage"
+          chmod +x "$APPIMAGE"
+          rm -rf squashfs-root
+          "$APPIMAGE" --appimage-extract > /dev/null
+
+          BIN_PATH="squashfs-root/usr/bin/vocoflow"
+          if [[ ! -f "$BIN_PATH" ]]; then
+            echo "Unable to locate extracted AppImage binary at $BIN_PATH"
+            find squashfs-root -maxdepth 4 -type f | head -n 50
+            exit 1
+          fi
+
+          if ldd "$BIN_PATH" | grep -q "not found"; then
+            echo "Found unresolved Linux runtime dependencies:"
+            ldd "$BIN_PATH" | grep "not found"
+            exit 1
+          fi
+
       - name: Package macOS drag-and-drop DMG
         if: runner.os == 'macOS'
         shell: bash
@@ -340,6 +405,7 @@ jobs:
               <key>CFBundleShortVersionString</key><string>1.0</string>
               <key>CFBundleExecutable</key><string>vocoflow</string>
               <key>CFBundlePackageType</key><string>APPL</string>
+              <key>LSMinimumSystemVersion</key><string>11.0</string>
               <key>CFBundleIconFile</key><string>activity.icns</string>
             </dict>
           </plist>
@@ -347,6 +413,87 @@ jobs:
 
           cp -R "${APP_BUNDLE}" dmg/
           hdiutil create -volname "Vocoflow" -srcfolder dmg -ov -format UDZO "dist/vocoflow-${VERSION}-macos.dmg"
+          tar -czf "dist/vocoflow-${VERSION}-macos.tar.gz" "${APP_BUNDLE}"
+
+      - name: Smoke test macOS DMG startup (tray/headless-safe)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          DMG="dist/vocoflow-${{ steps.tag_base.outputs.value }}-macos.dmg"
+          MOUNT_POINT="$(mktemp -d)"
+          STAGE_DIR="$(mktemp -d)"
+          LOG="macos-smoke.log"
+
+          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT_POINT"
+          cp -R "$MOUNT_POINT/Vocoflow.app" "$STAGE_DIR/"
+
+          APP_BIN="$STAGE_DIR/Vocoflow.app/Contents/MacOS/vocoflow"
+          DICTATION_DISABLE_HOTKEY_LISTENER=1 "$APP_BIN" >"$LOG" 2>&1 &
+          PID=$!
+          sleep 8
+
+          if ! kill -0 "$PID" 2>/dev/null; then
+            wait "$PID" || true
+            if grep -Eqi "dyld: Library not loaded|image not found|Reason: tried:" "$LOG"; then
+              echo "macOS smoke test failed due to runtime dependency error"
+              cat "$LOG"
+              hdiutil detach "$MOUNT_POINT" || true
+              rm -rf "$MOUNT_POINT" "$STAGE_DIR"
+              exit 1
+            fi
+            echo "macOS smoke test process exited quickly; log follows"
+            cat "$LOG"
+            hdiutil detach "$MOUNT_POINT" || true
+            rm -rf "$MOUNT_POINT" "$STAGE_DIR"
+            exit 1
+          fi
+
+          kill "$PID" || true
+          wait "$PID" || true
+          hdiutil detach "$MOUNT_POINT" || true
+          rm -rf "$MOUNT_POINT" "$STAGE_DIR"
+
+      - name: Health-check macOS packaged app
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_ARCHIVE="dist/vocoflow-${{ steps.tag_base.outputs.value }}-macos.tar.gz"
+          STAGE_DIR="$(mktemp -d)"
+          tar -xzf "$APP_ARCHIVE" -C "$STAGE_DIR"
+          DICTATION_DISABLE_HOTKEY_LISTENER=1 "$STAGE_DIR/Vocoflow.app/Contents/MacOS/vocoflow" --health-check
+          rm -rf "$STAGE_DIR"
+
+      - name: Verify macOS packaged binary dependencies (system-or-bundled only)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_ARCHIVE="dist/vocoflow-${{ steps.tag_base.outputs.value }}-macos.tar.gz"
+          STAGE_DIR="$(mktemp -d)"
+          tar -xzf "$APP_ARCHIVE" -C "$STAGE_DIR"
+          APP_BIN="$STAGE_DIR/Vocoflow.app/Contents/MacOS/vocoflow"
+
+          BAD_DEPS=0
+          while IFS= read -r line; do
+            dep="$(echo "$line" | sed -E 's/^\s*([^ ]+).*/\1/')"
+            [[ -z "$dep" ]] && continue
+
+            case "$dep" in
+              /System/Library/*|/usr/lib/*|@executable_path/*|@loader_path/*|@rpath/*)
+                ;;
+              *)
+                echo "Disallowed non-system macOS dependency: $dep"
+                BAD_DEPS=1
+                ;;
+            esac
+          done < <(otool -L "$APP_BIN" | tail -n +2)
+
+          rm -rf "$STAGE_DIR"
+          if [[ "$BAD_DEPS" -ne 0 ]]; then
+            exit 1
+          fi
 
       - name: Package Windows installer (NSIS)
         if: runner.os == 'Windows'
@@ -559,6 +706,26 @@ jobs:
             Start-Process -FilePath (Join-Path $env:LOCALAPPDATA "Programs\Vocoflow\Uninstall.exe") -ArgumentList "/S" -Wait -NoNewWindow
           }
 
+      - name: Health-check Windows installed binary
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installer = "dist/vocoflow-${{ steps.tag_base.outputs.value }}-windows-installer.exe"
+          Start-Process -FilePath $installer -ArgumentList "/S" -Wait -NoNewWindow
+          $installedExe = Join-Path $env:LOCALAPPDATA "Programs\Vocoflow\vocoflow.exe"
+          if (-not (Test-Path $installedExe)) {
+            throw "Health-check install failed: $installedExe was not created"
+          }
+
+          try {
+            & $installedExe --health-check
+            if ($LASTEXITCODE -ne 0) {
+              throw "--health-check failed with exit code $LASTEXITCODE"
+            }
+          } finally {
+            Start-Process -FilePath (Join-Path $env:LOCALAPPDATA "Programs\Vocoflow\Uninstall.exe") -ArgumentList "/S" -Wait -NoNewWindow
+          }
+
       - name: Malware scan (Windows Defender)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -617,6 +784,7 @@ jobs:
             certutil -hashfile "dist/vocoflow-${{ steps.tag_base.outputs.value }}-windows-installer.exe" SHA256 | sed -n '2p' | tr -d ' \r\n' > "dist/vocoflow-${{ steps.tag_base.outputs.value }}-windows-installer.exe.sha256"
           elif [[ "${{ runner.os }}" == "macOS" ]]; then
             shasum -a 256 "dist/vocoflow-${{ steps.tag_base.outputs.value }}-macos.dmg" | awk '{print $1}' > "dist/vocoflow-${{ steps.tag_base.outputs.value }}-macos.dmg.sha256"
+            shasum -a 256 "dist/vocoflow-${{ steps.tag_base.outputs.value }}-macos.tar.gz" | awk '{print $1}' > "dist/vocoflow-${{ steps.tag_base.outputs.value }}-macos.tar.gz.sha256"
           else
             sha256sum "dist/vocoflow-${{ steps.tag_base.outputs.value }}-linux.AppImage" > "dist/vocoflow-${{ steps.tag_base.outputs.value }}-linux.AppImage.sha256"
           fi

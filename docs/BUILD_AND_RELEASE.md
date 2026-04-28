@@ -92,6 +92,21 @@ Release workflows include baseline trust checks before artifacts are published:
 - **SHA256 checksums** generated for release artifacts.
 - **Optional VirusTotal** upload scan when `VIRUSTOTAL_API_KEY` is set.
 
+## Runtime Smoke + Health Checks in Release Pipeline
+
+Release workflow validates packaged startup/runtime behavior on all OSes:
+
+- **Windows:** existing silent install smoke test (`/S`) remains unchanged; plus `vocoflow.exe --health-check` on installed binary.
+- **Linux:** AppImage startup probe (tray/headless-safe) + `--health-check`.
+- **macOS:** DMG app startup probe (tray/headless-safe) + `--health-check` on packaged app.
+
+`--health-check` is a lightweight, non-interactive startup validation mode intended for CI/package-manager verification.
+
+Additional dependency hardening checks are enforced for brew-oriented artifacts:
+
+- **Linux AppImage:** CI extracts the AppImage and fails if `ldd` reports unresolved (`not found`) runtime libraries.
+- **macOS app bundle:** CI inspects `otool -L` output and fails on disallowed non-system dependency paths.
+
 ## WinGet Publish Automation
 
 On every newly pushed tag, release workflow runs a WinGet publish job that submits/updates a PR to `microsoft/winget-pkgs`.
@@ -102,6 +117,27 @@ On every newly pushed tag, release workflow runs a WinGet publish job that submi
 Required secret:
 
 - `WINGET_TOKEN` (token used by `wingetcreate --submit`)
+
+## Homebrew Publish Automation (macOS + Linux)
+
+On every newly pushed tag, release workflow also updates `mayankgujrathi/homebrew-tap` directly.
+
+- Tap formula path: `Formula/vocoflow.rb`
+- Uses release assets:
+  - macOS: `vocoflow-<version>-macos.tar.gz` (contains `Vocoflow.app`)
+  - Linux: `vocoflow-<version>-linux.AppImage`
+- Uses checksums from release `.sha256` files
+
+Install commands exposed to users:
+
+- Primary (fully-qualified): `brew install mayankgujrathi/tap/vocoflow`
+- Alternative:
+  - `brew tap mayankgujrathi/tap`
+  - `brew install vocoflow`
+
+Required secret:
+
+- `WINGET_TOKEN` (classic PAT with `public_repo`, reused for tap direct-push)
 
 Recommended optional secret:
 

@@ -22,7 +22,78 @@ use eframe::egui;
 use single_instance::SingleInstance;
 use tracing::{debug, error, info, warn};
 
+const HEALTH_CHECK_ARG: &str = "--health-check";
+
+fn detect_resource_root() -> Option<std::path::PathBuf> {
+  let mut roots = Vec::new();
+
+  if let Ok(exe_path) = std::env::current_exe()
+    && let Some(exe_dir) = exe_path.parent()
+  {
+    roots.push(exe_dir.to_path_buf());
+    if let Some(parent) = exe_dir.parent() {
+      roots.push(parent.to_path_buf());
+    }
+    roots.push(exe_dir.join("..").join("Resources"));
+    roots.push(exe_dir.join(".."));
+  }
+
+  roots.push(std::path::PathBuf::from("."));
+
+  roots.into_iter().find(|root| {
+    root
+      .join("resources")
+      .join("settings_window")
+      .join("index.html")
+      .exists()
+  })
+}
+
+fn run_health_check() -> Result<(), String> {
+  let exe = std::env::current_exe()
+    .map_err(|e| format!("unable to resolve current executable path: {e}"))?;
+  if !exe.exists() {
+    return Err(format!("executable path does not exist: {}", exe.display()));
+  }
+
+  let icon_bytes = include_bytes!("../assets/activity.png");
+  image::load_from_memory(icon_bytes)
+    .map_err(|e| format!("failed to decode embedded tray icon asset: {e}"))?;
+
+  let resource_root = detect_resource_root().ok_or_else(|| {
+    "unable to locate resources/settings_window/index.html from runtime roots"
+      .to_string()
+  })?;
+
+  let settings_index = resource_root
+    .join("resources")
+    .join("settings_window")
+    .join("index.html");
+  if !settings_index.exists() {
+    return Err(format!(
+      "settings window entrypoint missing: {}",
+      settings_index.display()
+    ));
+  }
+
+  println!(
+    "health-check ok: exe={}, resources_root={}",
+    exe.display(),
+    resource_root.display()
+  );
+  Ok(())
+}
+
 fn main() -> eframe::Result<()> {
+  if std::env::args().any(|arg| arg == HEALTH_CHECK_ARG) {
+    if let Err(e) = run_health_check() {
+      let _ = std::io::stderr()
+        .write_all(format!("health-check failed: {e}\n").as_bytes());
+      std::process::exit(1);
+    }
+    return Ok(());
+  }
+
   settings::initialize();
   if let Err(e) = logging::init_logging() {
     // Fallback path before logger is available.

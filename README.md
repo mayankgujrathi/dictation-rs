@@ -29,11 +29,27 @@ If your OS shows a security prompt while opening/installing, see [Unsigned Insta
 winget install -e --id mayankgujrathi.vocoflow
 ```
 
-#### brew (coming soon)
+#### brew
+
+Homebrew installs are available for **macOS and Linux**.
+
+Primary (fully-qualified, recommended to avoid naming conflicts):
 
 ```bash
+brew install mayankgujrathi/tap/vocoflow
+```
+
+Alternative:
+
+```bash
+brew tap mayankgujrathi/tap
 brew install vocoflow
 ```
+
+Notes:
+
+- macOS release builds are currently **Apple Silicon only**.
+- Windows users should install via `winget`.
 
 ## Release Trust (End-user)
 
@@ -134,36 +150,11 @@ Vocoflow includes optional LLM-based transcript post-processing for cleaner, con
 - By default, LLM reformatting is **not enabled** (`reformatting level = none`).
 - In `none` mode, model calls are generally bypassed.
 
-## Settings App Options
+## Settings & Logging
 
-Vocoflow settings are grouped into:
+To keep this README focused on install/use, detailed settings and logging behavior has moved to:
 
-### General
-
-- **Start on login**: auto-launch app when you sign in.
-
-### Logging
-
-- **App log max lines**: max retained lines in application log.
-- **Trace file limit**: number of trace files kept.
-- **Enable debug logs**: turn on verbose debug logging.
-
-### Transcription
-
-- **Model cache TTL (secs)**: cache duration for model metadata.
-- **User dictionary**: custom words and vocabulary.
-- **Reformatting level**: controls transcript post-processing behavior.
-- **LLM base URL**: OpenAI-compatible endpoint.
-- **LLM model name**: model identifier to call.
-- **LLM API key**: optional provider key (if required).
-- **LLM custom prompt**: extra instructions for rewriting behavior.
-
-### Reformatting levels explained
-
-- **none**: keep transcript unchanged; usually skips model calls.
-- **minimal**: tiny edits only (punctuation/casing/minor clarity).
-- **normal**: improve readability/grammar while preserving intent.
-- **freeform**: most polished app-context-adapted output; wording can change more.
+- [Settings and Logging](docs/SETTINGS_AND_LOGGING.md)
 
 ## Documentation
 

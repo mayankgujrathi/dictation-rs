@@ -9,15 +9,25 @@ This page contains operational details for runtime settings, logs, and traces.
 
 ## Settings Overview
 
+The Settings UI groups options into **General**, **Logging**, and **Transcription**.
+
 ### General
 
 - `start_on_login`: Launch Vocoflow automatically on user sign-in.
+
+UI label: **Start on login**
 
 ### Logging
 
 - `logging.app_log_max_lines`: Max retained lines in `application.log`.
 - `logging.trace_file_limit`: Max retained trace files.
 - `logging.enable_debug_logs`: Enables verbose debug logging.
+
+UI labels:
+
+- **App log max lines**
+- **Trace file limit**
+- **Enable debug logs**
 
 ### Transcription
 
@@ -29,6 +39,16 @@ This page contains operational details for runtime settings, logs, and traces.
 - `transcription.llm_model_name`: Model identifier.
 - `transcription.llm_api_key`: Optional API key.
 - `transcription.llm_custom_prompt`: Extra rewrite instructions.
+
+UI labels:
+
+- **Model cache TTL (secs)**
+- **User dictionary**
+- **Reformatting level**
+- **LLM base URL**
+- **LLM model name**
+- **LLM API key**
+- **LLM custom prompt**
 
 ## Reformatting Levels
 
