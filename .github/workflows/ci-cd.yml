@@ -679,8 +679,11 @@ jobs:
             CreateShortcut "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\activity.ico" 0
             CreateShortcut "$DESKTOP\Vocoflow.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\activity.ico" 0
             WriteUninstaller "$INSTDIR\Uninstall.exe"
-            DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${AUTOSTART_VALUE}"
-            DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "${AUTOSTART_VALUE}"
+
+            ; Installer owns Run entry lifecycle (create on install, delete on uninstall)
+            ; Keep startup disabled by default via StartupApproved state.
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${AUTOSTART_VALUE}" '"$INSTDIR\${APP_EXE}"'
+            WriteRegBin HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "${AUTOSTART_VALUE}" 030000000000000000000000
 
             WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayName" "${APP_NAME}"
             WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayVersion" "${VERSION}"
@@ -705,6 +708,7 @@ jobs:
             RMDir /r "$INSTDIR\resources"
             Delete "$INSTDIR\Uninstall.exe"
             RMDir "$INSTDIR"
+
             DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${AUTOSTART_VALUE}"
             DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "${AUTOSTART_VALUE}"
 

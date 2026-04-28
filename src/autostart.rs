@@ -1,3 +1,4 @@
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::path::PathBuf;
 
 use crate::settings;
@@ -24,6 +25,7 @@ fn system_autostart_enabled() -> Result<bool, String> {
   is_autostart_enabled()
 }
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn executable_path() -> Result<PathBuf, String> {
   std::env::current_exe()
     .map_err(|e| format!("resolve current exe failed: {e}"))
@@ -31,44 +33,89 @@ fn executable_path() -> Result<PathBuf, String> {
 
 #[cfg(target_os = "windows")]
 fn enable_autostart() -> Result<(), String> {
-  use winreg::RegKey;
-  use winreg::enums::{HKEY_CURRENT_USER, KEY_SET_VALUE};
+  ensure_windows_run_entry_present()?;
 
-  let exe = executable_path()?;
-  let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-  let run_key = hkcu
-    .open_subkey_with_flags(
-      "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-      KEY_SET_VALUE,
-    )
-    .map_err(|e| format!("open Run key failed: {e}"))?;
-
-  // Quote executable path to safely handle spaces.
-  let value = format!("\"{}\"", exe.display());
-  run_key
-    .set_value(AUTOSTART_VALUE_NAME, &value)
-    .map_err(|e| format!("set Run value failed: {e}"))
+  // Windows Task Manager startup toggles are tracked via StartupApproved\Run.
+  // Removing the value returns the entry to enabled/default state.
+  clear_windows_startup_approved_state()
 }
 
 #[cfg(target_os = "windows")]
 fn disable_autostart() -> Result<(), String> {
+  ensure_windows_run_entry_present()?;
+
+  // 0x03 is a known disabled flag in StartupApproved\Run.
+  set_windows_startup_approved_state_disabled()
+}
+
+#[cfg(target_os = "windows")]
+fn ensure_windows_run_entry_present() -> Result<(), String> {
   use winreg::RegKey;
-  use winreg::enums::{HKEY_CURRENT_USER, KEY_SET_VALUE};
+  use winreg::enums::{HKEY_CURRENT_USER, KEY_READ};
 
   let hkcu = RegKey::predef(HKEY_CURRENT_USER);
   let run_key = hkcu
     .open_subkey_with_flags(
       "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-      KEY_SET_VALUE,
+      KEY_READ,
     )
     .map_err(|e| format!("open Run key failed: {e}"))?;
 
-  // If value is absent, treat as success.
-  match run_key.delete_value(AUTOSTART_VALUE_NAME) {
+  let run_value: Result<String, _> = run_key.get_value(AUTOSTART_VALUE_NAME);
+  match run_value {
+    Ok(_) => Ok(()),
+    Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(
+      "Windows autostart registration is missing. Please reinstall Vocoflow to repair the startup entry."
+        .to_string(),
+    ),
+    Err(e) => Err(format!("read Run value failed: {e}")),
+  }
+}
+
+#[cfg(target_os = "windows")]
+fn clear_windows_startup_approved_state() -> Result<(), String> {
+  use winreg::RegKey;
+  use winreg::enums::{HKEY_CURRENT_USER, KEY_SET_VALUE};
+
+  let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+  let approved_key = hkcu
+    .open_subkey_with_flags(
+      "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run",
+      KEY_SET_VALUE,
+    )
+    .map_err(|e| format!("open StartupApproved key failed: {e}"))?;
+
+  match approved_key.delete_value(AUTOSTART_VALUE_NAME) {
     Ok(()) => Ok(()),
     Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-    Err(e) => Err(format!("delete Run value failed: {e}")),
+    Err(e) => Err(format!("delete StartupApproved value failed: {e}")),
   }
+}
+
+#[cfg(target_os = "windows")]
+fn set_windows_startup_approved_state_disabled() -> Result<(), String> {
+  use winreg::RegKey;
+  use winreg::RegValue;
+  use winreg::enums::{HKEY_CURRENT_USER, KEY_SET_VALUE, REG_BINARY};
+
+  let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+  let approved_key = hkcu
+    .open_subkey_with_flags(
+      "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run",
+      KEY_SET_VALUE,
+    )
+    .map_err(|e| format!("open StartupApproved key failed: {e}"))?;
+
+  // 12 bytes aligns with common StartupApproved payload length used by Windows.
+  let disabled = RegValue {
+    vtype: REG_BINARY,
+    bytes: vec![
+      0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ],
+  };
+  approved_key
+    .set_raw_value(AUTOSTART_VALUE_NAME, &disabled)
+    .map_err(|e| format!("set StartupApproved disabled state failed: {e}"))
 }
 
 #[cfg(target_os = "windows")]
