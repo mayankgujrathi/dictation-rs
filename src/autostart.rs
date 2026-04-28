@@ -7,6 +7,7 @@ use crate::settings;
 const AUTOSTART_VALUE_NAME: &str = "vocoflow";
 
 pub fn sync_from_settings() -> Result<(), String> {
+  settings::refresh_from_disk_best_effort("autostart::sync_from_settings");
   let enable = settings::current().start_on_login;
   if enable {
     enable_autostart()
@@ -16,6 +17,9 @@ pub fn sync_from_settings() -> Result<(), String> {
 }
 
 pub fn sync_settings_from_system() -> Result<(), String> {
+  settings::refresh_from_disk_best_effort(
+    "autostart::sync_settings_from_system",
+  );
   let enabled = system_autostart_enabled()?;
   let _ = settings::persist_start_on_login_from_system(enabled)?;
   Ok(())

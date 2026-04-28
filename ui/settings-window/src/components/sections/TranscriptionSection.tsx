@@ -8,10 +8,11 @@ type TranscriptionSectionProps = {
   value: TranscriptionSettings
   onChange: (next: TranscriptionSettings) => void
   onReset: () => void
+  onOpenLlmGuide?: () => void
   saving?: boolean
 }
 
-export function TranscriptionSection({ value, onChange, onReset, saving }: TranscriptionSectionProps) {
+export function TranscriptionSection({ value, onChange, onReset, onOpenLlmGuide, saving }: TranscriptionSectionProps) {
   const [edit, setEdit] = useState({ userDict: false, baseUrl: false, modelName: false, apiKey: false, prompt: false })
   const pencilClass = (active: boolean) =>
     `rounded-md border px-2 py-1 text-xs transition ${
@@ -36,7 +37,12 @@ export function TranscriptionSection({ value, onChange, onReset, saving }: Trans
     <section className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-slate-100">Transcription</h2>
-        <button type="button" onClick={onReset} className="rounded-lg border border-slate-600 px-2 py-1 text-xs text-slate-200">Reset defaults</button>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={onOpenLlmGuide} className="rounded-lg border border-cyan-500/50 px-2 py-1 text-xs text-cyan-200 hover:bg-cyan-500/10">
+            Learn more (LLM)
+          </button>
+          <button type="button" onClick={onReset} className="rounded-lg border border-slate-600 px-2 py-1 text-xs text-slate-200">Reset defaults</button>
+        </div>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         <FormField label="Model cache TTL (secs)" description="How long model metadata is cached.">

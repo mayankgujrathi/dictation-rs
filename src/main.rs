@@ -8,6 +8,7 @@ mod audio;
 mod autostart;
 mod llm;
 mod logging;
+mod runtime_flash;
 mod settings;
 mod settings_window;
 mod tray;

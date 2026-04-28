@@ -170,6 +170,17 @@ pub fn refresh_from_disk() -> Result<bool, String> {
   Ok(true)
 }
 
+pub fn refresh_from_disk_best_effort(caller: &str) {
+  match refresh_from_disk() {
+    Ok(changed) => {
+      debug!(caller, changed, "settings refresh attempted");
+    }
+    Err(e) => {
+      tracing::warn!(caller, error = %e, "settings refresh failed; continuing with in-memory snapshot");
+    }
+  }
+}
+
 pub fn update_start_on_login(
   start_on_login: bool,
 ) -> Result<AppSettings, String> {

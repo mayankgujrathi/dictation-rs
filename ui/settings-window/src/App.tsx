@@ -19,6 +19,8 @@ import { LoggingSection } from './components/sections/LoggingSection'
 import { TranscriptionSection } from './components/sections/TranscriptionSection'
 import type { AppSettings } from './types/settings'
 
+const LLM_GUIDE_URL = 'https://github.com/mayankgujrathi/vocoflow/blob/main/docs/LLM_SETUP_AND_USAGE.md'
+
 const EMPTY_SETTINGS: AppSettings = {
   start_on_login: false,
   logging: { app_log_max_lines: 1000, trace_file_limit: 100, enable_debug_logs: false },
@@ -39,6 +41,7 @@ function App() {
   const [settings, setSettings] = useState<AppSettings>(EMPTY_SETTINGS)
   const [logsDir, setLogsDir] = useState('')
   const [status, setStatus] = useState('Loading settings...')
+  const [flashError, setFlashError] = useState<string>('')
   const [savingKey, setSavingKey] = useState<string>('')
 
   const sidebarItems = useMemo(
@@ -54,15 +57,35 @@ function App() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [loadedSettings, loadedLogsDir] = await Promise.all([getAllSettings(), getAboutLogsDir()])
-        setSettings(loadedSettings)
+        const [loadedSettingsPayload, loadedLogsDir] = await Promise.all([getAllSettings(), getAboutLogsDir()])
+        setSettings(loadedSettingsPayload.settings)
         setLogsDir(loadedLogsDir)
+        const flash = loadedSettingsPayload.flash?.llm_post_process_error
+        if (flash?.message) {
+          setFlashError(flash.message)
+        }
         setStatus('Settings loaded.')
       } catch (error) {
         setStatus(`Failed to load settings: ${String(error)}`)
       }
     }
     void load()
+  }, [])
+
+  useEffect(() => {
+    const timer = setInterval(async () => {
+      try {
+        const latest = await getAllSettings()
+        const flash = latest.flash?.llm_post_process_error
+        if (flash?.message) {
+          setFlashError(flash.message)
+        }
+      } catch {
+        // Best-effort live flash polling: avoid noisy status churn.
+      }
+    }, 1500)
+
+    return () => clearInterval(timer)
   }, [])
 
   useEffect(() => {
@@ -160,6 +183,20 @@ function App() {
       </header>
 
       <div className="space-y-5">
+        {flashError && (
+          <div className="rounded-lg border border-amber-400/50 bg-amber-950/40 px-3 py-2 text-sm text-amber-100">
+            <div className="font-semibold">Last-run LLM post-processing error</div>
+            <div className="mt-1 whitespace-pre-wrap text-xs text-amber-200/95">{flashError}</div>
+            <button
+              type="button"
+              onClick={() => void openExternalLink(LLM_GUIDE_URL)}
+              className="mt-2 rounded border border-amber-300/60 px-2 py-1 text-xs text-amber-100 hover:bg-amber-400/10"
+            >
+              Learn more: LLM setup and usage
+            </button>
+          </div>
+        )}
+
         {activeTab === 'general' && (
           <GeneralSection
             startOnLogin={settings.start_on_login}
@@ -183,6 +220,7 @@ function App() {
             value={settings.transcription}
             onChange={(next) => setSettings((prev) => ({ ...prev, transcription: next }))}
             onReset={() => void runReset('transcription')}
+            onOpenLlmGuide={() => void openExternalLink(LLM_GUIDE_URL)}
             saving={savingKey === 'transcription'}
           />
         )}

@@ -93,6 +93,7 @@ pub fn wake_ui() {
 }
 
 pub fn is_model_ready() -> bool {
+  crate::settings::refresh_from_disk_best_effort("app::is_model_ready");
   let ready = workers::is_model_downloaded();
   if !ready {
     tracing::debug!("model is not ready yet");

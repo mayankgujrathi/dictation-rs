@@ -22,3 +22,12 @@ export type AppSettings = {
   logging: LoggingSettings
   transcription: TranscriptionSettings
 }
+
+export type FlashMessage = {
+  message: string
+  occurred_at_unix_ms: number
+}
+
+export type SettingsFlashPayload = {
+  llm_post_process_error?: FlashMessage
+}

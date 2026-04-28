@@ -23,9 +23,9 @@ export type IpcResponse<TPayload> = {
   error?: IpcError
 }
 
-import type { AppSettings, LoggingSettings, TranscriptionSettings } from './types/settings'
+import type { AppSettings, LoggingSettings, SettingsFlashPayload, TranscriptionSettings } from './types/settings'
 
-export type SettingsResponse = { settings: AppSettings }
+export type SettingsResponse = { settings: AppSettings; flash?: SettingsFlashPayload }
 export type AboutLogsDirResponse = { logs_dir: string }
 export type AboutOpenExternalUrlResponse = { url: string }
 
@@ -104,9 +104,9 @@ export const sendIpc = async <TPayloadReq, TPayloadRes>(
   })
 }
 
-export const getAllSettings = async (): Promise<AppSettings> => {
+export const getAllSettings = async (): Promise<SettingsResponse> => {
   const reply = await sendIpc<Record<string, never>, SettingsResponse>({ method: 'GET', endpoint: '/settings', payload: {} })
-  return reply.payload.settings
+  return reply.payload
 }
 
 export const updateStartOnLogin = async (start_on_login: boolean): Promise<AppSettings> => {

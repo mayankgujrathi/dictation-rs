@@ -39,6 +39,7 @@ fn traces_dir() -> PathBuf {
 }
 
 fn debug_enabled() -> bool {
+  settings::refresh_from_disk_best_effort("logging::debug_enabled");
   settings::current().logging.enable_debug_logs
 }
 
@@ -201,12 +202,16 @@ pub fn init_logging() -> Result<(), String> {
 }
 
 pub fn enforce_app_log_retention() {
+  settings::refresh_from_disk_best_effort("logging::enforce_app_log_retention");
   let app_log_max_lines = settings::current().logging.app_log_max_lines;
   let path = logs_dir().join("application.log");
   let _ = trim_to_last_n_lines(&path, app_log_max_lines);
 }
 
 pub fn apply_runtime_logging_settings() {
+  settings::refresh_from_disk_best_effort(
+    "logging::apply_runtime_logging_settings",
+  );
   let cfg = settings::current().logging;
   let app_log_path = logs_dir().join("application.log");
   let _ = trim_to_last_n_lines(&app_log_path, cfg.app_log_max_lines);

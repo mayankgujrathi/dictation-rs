@@ -19,6 +19,7 @@ use crate::audio::recording_output_path;
 use crate::llm::{
   LlmAppContext, LlmPostProcessorConfig, process_transcript_with_llm,
 };
+use crate::runtime_flash;
 use crate::settings::{self, TranscriptReformattingLevel};
 use transcribe_rs::onnx::Quantization;
 use transcribe_rs::onnx::parakeet::{
@@ -282,6 +283,7 @@ pub(crate) fn is_model_downloaded() -> bool {
 }
 
 fn transcribe_call() -> Result<(), ()> {
+  settings::refresh_from_disk_best_effort("transcribe_call");
   info!("transcription worker started");
   set_ort_accelerator(OrtAccelerator::Auto);
   let cache = model_cache();
@@ -357,14 +359,17 @@ fn transcribe_call() -> Result<(), ()> {
   let normalized_transcript =
     process_transcript_with_custom_dictionary(transcript_text.as_str());
   let active_app_info = get_active_application_info();
+  let mut had_post_process_error = false;
   let final_transcript = match post_process_transcript(
     normalized_transcript.as_str(),
     &active_app_info,
   ) {
     Ok(text) => text,
-    Err(()) => {
-      error!("post processing transcript failed");
-      return Err(());
+    Err(err) => {
+      had_post_process_error = true;
+      error!(error = %err, "post processing transcript failed; falling back to local transcript");
+      let _ = runtime_flash::record_llm_post_process_error(err);
+      normalized_transcript.clone()
     }
   };
 
@@ -383,10 +388,17 @@ fn transcribe_call() -> Result<(), ()> {
   }
 
   info!(text = %result.text, "transcription completed");
-  Ok(())
+  if had_post_process_error {
+    Err(())
+  } else {
+    Ok(())
+  }
 }
 
 fn process_transcript_with_custom_dictionary(transcript_text: &str) -> String {
+  settings::refresh_from_disk_best_effort(
+    "process_transcript_with_custom_dictionary",
+  );
   let cfg = settings::current();
   let mut rules = build_dictionary_rules(
     &cfg.transcription.built_in_dictionary,
@@ -614,7 +626,7 @@ fn parse_app_metadata_from_tsv_output(
 fn post_process_transcript(
   transcript_text: &str,
   active_app_info: &ActiveApplicationInfo,
-) -> Result<String, ()> {
+) -> Result<String, String> {
   debug!(
     window_title = %active_app_info.window_title,
     app_name = ?active_app_info.application_name,
@@ -622,6 +634,7 @@ fn post_process_transcript(
     "post processing transcript for active app context"
   );
 
+  settings::refresh_from_disk_best_effort("post_process_transcript");
   let cfg = settings::current().transcription;
   let reformatting_level = &cfg.transcript_reformatting_level;
   if matches!(reformatting_level, TranscriptReformattingLevel::None) {
@@ -641,7 +654,9 @@ fn post_process_transcript(
       model = %cfg.llm_model_name,
       "llm post processing requires model settings when reformatting level is not none"
     );
-    return Err(());
+    return Err(
+      "LLM configuration missing for selected reformatting level".to_string(),
+    );
   }
 
   let llm_cfg = LlmPostProcessorConfig {
@@ -659,7 +674,7 @@ fn post_process_transcript(
   };
 
   process_transcript_with_llm(&llm_cfg, transcript_text, &app_context)
-    .map_err(|_| ())
+    .map_err(|e| format!("LLM post-processing failed: {e:?}"))
 }
 
 fn reformatting_level_label(
