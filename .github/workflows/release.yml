@@ -468,7 +468,7 @@ jobs:
 
           BAD_DEPS=0
           while IFS= read -r line; do
-            dep="$(echo "$line" | sed -E 's/^\s*([^ ]+).*/\1/')"
+            dep="$(echo "$line" | awk '{print $1}')"
             [[ -z "$dep" ]] && continue
 
             case "$dep" in
