@@ -19,12 +19,14 @@ Turn your voice into ready-to-paste text in seconds with a fast, privacy-friendl
    - **Linux:** `vocoflow-<version>-linux.AppImage`
 3. Install/run using the platform steps below.
 
-### Upcoming package managers (placeholders)
+If your OS shows a security prompt while opening/installing, see [Unsigned Install Guidance](#unsigned-install-guidance-windowsmacoslinux).
 
-#### winget (coming soon)
+### Upcoming package managers
+
+#### winget
 
 ```powershell
-winget install vocoflow
+winget install -e --id mayankgujrathi.vocoflow
 ```
 
 #### brew (coming soon)
@@ -33,15 +35,13 @@ winget install vocoflow
 brew install vocoflow
 ```
 
-## Security & Release Trust Checks (CI/CD)
+## Release Trust (End-user)
 
-- Multi-OS build + test validation (Windows/macOS/Linux).
-- Windows installer quiet-mode validation (`/S`) for package manager compatibility.
-- Windows Defender malware scan on release installer artifacts.
-- SHA256 checksum generation for published artifacts (used by winget/brew style verification).
-- Optional VirusTotal upload scan when `VIRUSTOTAL_API_KEY` is configured.
-- Trivy supply-chain filesystem scan for high/critical findings.
-- WinGet publish automation opens PR on new tag creation for package id `mayankgujrathi.vocoflow`.
+- Releases are built and validated in CI across Windows/macOS/Linux.
+- Artifacts include integrity/safety checks (like checksum generation and automated security scans) to reduce risk.
+- Full technical details are documented in [Build and Release](docs/BUILD_AND_RELEASE.md).
+
+Note: These checks improve trust, but no software distribution can promise zero risk.
 
 ### Build from source
 
@@ -65,6 +65,10 @@ cargo run --release
 ## Unsigned Install Guidance (Windows/macOS/Linux)
 
 Because this is a hobby project and binaries may be unsigned on some platforms, you may see OS security warnings.
+
+Why this happens: full commercial-style code signing/notarization is still being rolled out.
+
+What assurance you still get: release builds go through CI validation and automated security checks before publishing (see [Build and Release](docs/BUILD_AND_RELEASE.md) for details).
 
 ### Windows (Unknown Publisher / SmartScreen)
 
@@ -90,6 +94,16 @@ Because this is a hobby project and binaries may be unsigned on some platforms, 
    ```
 
 Tip: Always download from the official GitHub Releases page.
+
+## First Launch: What to Expect
+
+- The app may take a little longer the first time while it prepares runtime files.
+- A `settings.json` file and log files are created automatically.
+- You might not see a main window on startup — Vocoflow can run in the background. Check the system tray/menu bar icon to confirm it’s running and open Settings.
+- On first launch, you may briefly see a small blue progress pill. That indicates model files are being downloaded for transcription.
+- For model source and license details, see [Attribution](docs/LICENSES.md#attribution).
+- Depending on your OS, you may be asked to allow microphone/accessibility/security permissions.
+- After setup, start dictation with the hotkey and use normally.
 
 ## Troubleshooting (Quick)
 

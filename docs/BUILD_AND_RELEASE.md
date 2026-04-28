@@ -82,6 +82,11 @@ CI validates silent install behavior during workflow runs.
 
 ## Security Scans in CI/CD + Release
 
+Release workflows include baseline trust checks before artifacts are published:
+
+- **Multi-OS CI validation** across Windows, macOS, and Linux build/test jobs.
+- **Windows installer silent-mode (`/S`) validation** for package manager compatibility.
+
 - **Windows Defender** scan on Windows installer artifacts.
 - **Trivy** filesystem supply-chain scan (high/critical fails CI).
 - **SHA256 checksums** generated for release artifacts.
