@@ -21,7 +21,7 @@ Turn your voice into ready-to-paste text in seconds with a fast, privacy-friendl
 
 If your OS shows a security prompt while opening/installing, see [Unsigned Install Guidance](#unsigned-install-guidance-windowsmacoslinux).
 
-### Upcoming package managers
+### Package managers
 
 #### winget
 
