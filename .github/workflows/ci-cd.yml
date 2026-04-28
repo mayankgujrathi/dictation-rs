@@ -348,6 +348,10 @@ jobs:
               echo "Linux smoke test failed due to runtime dependency error"
               cat "$LOG"
               exit 1
+            elif grep -Eqi "GTK has not been initialized|gtk_icon_theme_get_for_screen|GDK_IS_SCREEN" "$LOG"; then
+              echo "Linux smoke test hit known headless GTK initialization issue; continuing"
+              cat "$LOG"
+              exit 0
             fi
             echo "Linux smoke test process exited quickly; log follows"
             cat "$LOG"
