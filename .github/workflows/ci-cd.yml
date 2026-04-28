@@ -107,6 +107,7 @@ jobs:
             libxkbcommon-x11-dev \
             libxdo-dev \
             libudev-dev \
+            xvfb \
             libayatana-appindicator3-1 \
             libayatana-appindicator3-dev
 
@@ -337,7 +338,7 @@ jobs:
           export DICTATION_DISABLE_HOTKEY_LISTENER=1
 
           LOG="linux-smoke.log"
-          "$APP_BIN" >"$LOG" 2>&1 &
+          xvfb-run -a "$APP_BIN" >"$LOG" 2>&1 &
           PID=$!
           sleep 8
 
