@@ -7,6 +7,7 @@ import {
   openAboutExternalUrl,
   openAboutLogsDir,
   resetDefaults,
+  signalSettingsWindowReady,
   updateLogging,
   updateStartOnLogin,
   updateTranscription,
@@ -43,6 +44,7 @@ function App() {
   const [status, setStatus] = useState('Loading settings...')
   const [flashError, setFlashError] = useState<string>('')
   const [savingKey, setSavingKey] = useState<string>('')
+  const [uiBootReady, setUiBootReady] = useState(false)
 
   const sidebarItems = useMemo(
     () => [
@@ -65,12 +67,38 @@ function App() {
           setFlashError(flash.message)
         }
         setStatus('Settings loaded.')
+        setUiBootReady(true)
       } catch (error) {
         setStatus(`Failed to load settings: ${String(error)}`)
+        // Even on error, reveal UI so user can see the status message.
+        setUiBootReady(true)
       }
     }
     void load()
   }, [])
+
+  useEffect(() => {
+    if (!uiBootReady) {
+      return
+    }
+
+    const root = document.getElementById('root')
+    const splash = document.getElementById('boot-splash')
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (root) {
+          root.style.opacity = '1'
+        }
+        if (splash) {
+          splash.remove()
+        }
+        void signalSettingsWindowReady().catch(() => {
+          // Best-effort signal for native window show timing.
+        })
+      })
+    })
+  }, [uiBootReady])
 
   useEffect(() => {
     const timer = setInterval(async () => {

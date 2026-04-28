@@ -58,4 +58,9 @@ pub static ROUTES: &[RouteDef] = route_table!(
     "/settings/update/transcription",
     super::endpoints::settings_update_transcription::handle
   ),
+  (
+    "POST",
+    "/settings/window/ready",
+    super::endpoints::settings_window_ready::handle
+  ),
 );

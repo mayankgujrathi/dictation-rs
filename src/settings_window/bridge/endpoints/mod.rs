@@ -9,3 +9,4 @@ pub mod settings_reset_defaults;
 pub mod settings_update_logging;
 pub mod settings_update_start_on_login;
 pub mod settings_update_transcription;
+pub mod settings_window_ready;

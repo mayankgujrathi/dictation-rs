@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use single_instance::SingleInstance;
 use tracing::{debug, error, info, warn};
@@ -10,7 +11,7 @@ use winit::{
   dpi::LogicalSize,
   event::WindowEvent,
   event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
-  window::{Icon, Window},
+  window::{Icon, Theme, Window},
 };
 use wry::{WebView, WebViewBuilder};
 
@@ -21,6 +22,31 @@ use crate::settings_window::{
 
 const BRIDGE_RESPONSE_BUILD_ERROR_BODY: &[u8] =
   b"{\"ok\":false,\"kind\":\"error.response_build\"}";
+static SETTINGS_WINDOW_UI_READY: AtomicBool = AtomicBool::new(false);
+const SETTINGS_PRELOAD_DARK_BG_SCRIPT: &str = r#"
+(() => {
+  const applyPreloadDarkTheme = () => {
+    const html = document.documentElement;
+    const body = document.body;
+
+    if (html) {
+      html.style.backgroundColor = '#0b1020';
+      html.style.colorScheme = 'dark';
+      html.style.height = '100%';
+    }
+
+    if (body) {
+      body.style.margin = '0';
+      body.style.backgroundColor = '#0b1020';
+      body.style.color = '#e2e8f0';
+      body.style.minHeight = '100vh';
+    }
+  };
+
+  applyPreloadDarkTheme();
+  window.addEventListener('DOMContentLoaded', applyPreloadDarkTheme, { once: true });
+})();
+"#;
 #[cfg(not(debug_assertions))]
 const RELEASE_WEBVIEW_HARDENING_SCRIPT: &str = r#"
 (() => {
@@ -353,6 +379,7 @@ pub fn open_settings_window() {
 }
 
 pub fn run_settings_process() -> Result<(), String> {
+  SETTINGS_WINDOW_UI_READY.store(false, Ordering::Release);
   let instance =
     SingleInstance::new("vocoflow-settings-window-single-instance").map_err(
       |e| format!("failed to create settings process instance lock: {e}"),
@@ -373,6 +400,11 @@ pub fn run_settings_process() -> Result<(), String> {
 struct SettingsWindowApp {
   window: Option<Window>,
   webview: Option<WebView>,
+  window_shown: bool,
+}
+
+pub(crate) fn mark_settings_window_ui_ready() {
+  SETTINGS_WINDOW_UI_READY.store(true, Ordering::Release);
 }
 
 impl ApplicationHandler for SettingsWindowApp {
@@ -392,6 +424,8 @@ impl ApplicationHandler for SettingsWindowApp {
         SETTINGS_WINDOW_WIDTH,
         SETTINGS_WINDOW_HEIGHT,
       ))
+      .with_theme(Some(Theme::Dark))
+      .with_visible(false)
       .with_resizable(false);
 
     if let Some(icon) = load_settings_window_icon() {
@@ -412,6 +446,7 @@ impl ApplicationHandler for SettingsWindowApp {
         handle_settings_protocol_request(&request)
       })
       .with_url("vocoflow://localhost/settings/index.html")
+      .with_initialization_script(SETTINGS_PRELOAD_DARK_BG_SCRIPT)
       .with_ipc_handler(|request| {
         bridge::handle_ipc(request);
       });
@@ -443,6 +478,15 @@ impl ApplicationHandler for SettingsWindowApp {
   }
 
   fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+    if !self.window_shown {
+      if SETTINGS_WINDOW_UI_READY.swap(false, Ordering::AcqRel)
+        && let Some(window) = &self.window
+      {
+        window.set_visible(true);
+        self.window_shown = true;
+      }
+    }
+
     #[cfg(target_os = "linux")]
     while gtk::events_pending() {
       gtk::main_iteration_do(false);
@@ -456,6 +500,9 @@ impl ApplicationHandler for SettingsWindowApp {
     event: WindowEvent,
   ) {
     if matches!(event, WindowEvent::CloseRequested) {
+      if let Some(window) = &self.window {
+        window.set_visible(false);
+      }
       event_loop.exit();
     }
   }

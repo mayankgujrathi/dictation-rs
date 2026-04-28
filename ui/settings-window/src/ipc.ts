@@ -163,6 +163,14 @@ export const openAboutExternalUrl = async (url: string): Promise<string> => {
   return reply.payload.url
 }
 
+export const signalSettingsWindowReady = async (): Promise<void> => {
+  await sendIpc<Record<string, never>, { visible: boolean }>({
+    method: 'POST',
+    endpoint: '/settings/window/ready',
+    payload: {},
+  })
+}
+
 export const resetDefaults = async (
   scope: 'general' | 'logging' | 'transcription' | 'all',
 ): Promise<AppSettings> => {
