@@ -478,13 +478,12 @@ impl ApplicationHandler for SettingsWindowApp {
   }
 
   fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-    if !self.window_shown {
-      if SETTINGS_WINDOW_UI_READY.swap(false, Ordering::AcqRel)
-        && let Some(window) = &self.window
-      {
-        window.set_visible(true);
-        self.window_shown = true;
-      }
+    if !self.window_shown
+      && SETTINGS_WINDOW_UI_READY.swap(false, Ordering::AcqRel)
+      && let Some(window) = &self.window
+    {
+      window.set_visible(true);
+      self.window_shown = true;
     }
 
     #[cfg(target_os = "linux")]
