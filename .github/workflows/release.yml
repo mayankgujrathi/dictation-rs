@@ -1154,7 +1154,8 @@ jobs:
           $url = "${{ steps.meta.outputs.url }}"
 
           Write-Host "Attempting WinGet update for $packageId $version"
-          $updateOutput = & .\wingetcreate.exe update $packageId --version "$version" --urls "$url" --installer-type "nullsoft" --scope "user" --architecture "x64" --submit --token "$env:WINGET_TOKEN" 2>&1
+          $urlWithOverrides = "$url|x64|user"
+          $updateOutput = & .\wingetcreate.exe update $packageId --version "$version" --urls "$urlWithOverrides" --submit --token "$env:WINGET_TOKEN" 2>&1
           $updateExit = $LASTEXITCODE
           $updateText = ($updateOutput | Out-String)
           Write-Host $updateText
