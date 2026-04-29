@@ -592,10 +592,60 @@ jobs:
           $includeLines = $redistFiles | ForEach-Object { '            File "dist\redist\' + $_.Name + '"' }
           Set-Content -Path "dist/installer_redist.nsh" -Value $includeLines
 
-          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
-            choco install nsis -y --no-progress
-            $env:PATH = "C:\Program Files (x86)\NSIS;C:\Program Files\NSIS;$env:PATH"
+          $makensisExe = $null
+
+          function Resolve-Makensis {
+            $cmd = Get-Command makensis -ErrorAction SilentlyContinue
+            if ($cmd) { return $cmd.Source }
+
+            $candidates = @(
+              "C:\Program Files (x86)\NSIS\makensis.exe",
+              "C:\Program Files\NSIS\makensis.exe",
+              "$env:RUNNER_TEMP\nsis\makensis.exe",
+              "$env:RUNNER_TEMP\nsis\nsis-3.10\makensis.exe"
+            )
+            foreach ($candidate in $candidates) {
+              if (Test-Path $candidate) { return $candidate }
+            }
+
+            return $null
           }
+
+          $makensisExe = Resolve-Makensis
+          if (-not $makensisExe) {
+            Write-Host "makensis not found on PATH; trying Chocolatey install with retries"
+            for ($attempt = 1; $attempt -le 3 -and -not $makensisExe; $attempt++) {
+              try {
+                choco install nsis -y --no-progress
+              } catch {
+                Write-Warning "Chocolatey attempt $attempt failed: $($_.Exception.Message)"
+              }
+
+              $env:PATH = "C:\Program Files (x86)\NSIS;C:\Program Files\NSIS;$env:PATH"
+              $makensisExe = Resolve-Makensis
+              if (-not $makensisExe) {
+                Start-Sleep -Seconds (5 * $attempt)
+              }
+            }
+          }
+
+          if (-not $makensisExe) {
+            Write-Host "Chocolatey unavailable; downloading portable NSIS fallback"
+            $nsisZip = Join-Path $env:RUNNER_TEMP "nsis.zip"
+            $nsisDir = Join-Path $env:RUNNER_TEMP "nsis"
+            if (Test-Path $nsisDir) { Remove-Item $nsisDir -Recurse -Force }
+
+            curl.exe -fsSL -o $nsisZip "https://sourceforge.net/projects/nsis/files/NSIS%203/3.10/nsis-3.10.zip/download"
+            Expand-Archive -Path $nsisZip -DestinationPath $nsisDir -Force
+
+            $makensisExe = Resolve-Makensis
+          }
+
+          if (-not $makensisExe) {
+            throw "Unable to locate makensis.exe after trying PATH, Chocolatey, and portable NSIS download"
+          }
+
+          Write-Host "Using makensis at: $makensisExe"
 
           @'
           !define APP_NAME "Vocoflow"
@@ -669,7 +719,7 @@ jobs:
           SectionEnd
           '@ | Set-Content -Path installer.nsi
 
-          & makensis installer.nsi
+          & $makensisExe installer.nsi
           Move-Item "vocoflow-${{ github.ref_name }}-windows-installer.exe" "dist/vocoflow-${{ github.ref_name }}-windows-installer.exe" -Force
 
       - name: Validate Windows silent install behavior (/S)
