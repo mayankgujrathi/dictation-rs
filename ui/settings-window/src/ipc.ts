@@ -118,6 +118,15 @@ export const updateStartOnLogin = async (start_on_login: boolean): Promise<AppSe
   return reply.payload.settings
 }
 
+export const updateHotkey = async (binding: string, chord_timeout_ms?: number): Promise<AppSettings> => {
+  const reply = await sendIpc<{ binding: string; chord_timeout_ms?: number }, SettingsResponse>({
+    method: 'POST',
+    endpoint: '/settings/update/hotkey',
+    payload: { binding, chord_timeout_ms },
+  })
+  return reply.payload.settings
+}
+
 export const updateLogging = async (logging: LoggingSettings): Promise<AppSettings> => {
   const reply = await sendIpc<{ logging: LoggingSettings }, SettingsResponse>({
     method: 'POST',

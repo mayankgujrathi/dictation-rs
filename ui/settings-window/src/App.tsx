@@ -8,6 +8,7 @@ import {
   openAboutLogsDir,
   resetDefaults,
   signalSettingsWindowReady,
+  updateHotkey,
   updateLogging,
   updateStartOnLogin,
   updateTranscription,
@@ -24,6 +25,11 @@ const LLM_GUIDE_URL = 'https://github.com/mayankgujrathi/vocoflow/blob/main/docs
 
 const EMPTY_SETTINGS: AppSettings = {
   start_on_login: false,
+  hotkey: {
+    binding: 'Ctrl+`',
+    chord_timeout_ms: 1200,
+    parsed: { normalized: 'Ctrl+`', sequence: [] },
+  },
   logging: { app_log_max_lines: 1000, trace_file_limit: 100, enable_debug_logs: false },
   transcription: {
     built_in_dictionary: [],
@@ -121,6 +127,7 @@ function App() {
       setSavingKey('general')
       try {
         await updateStartOnLogin(settings.start_on_login)
+        await updateHotkey(settings.hotkey.binding, settings.hotkey.chord_timeout_ms)
         setStatus('General settings auto-saved.')
       } catch (error) {
         setStatus(`Save failed: ${String(error)}`)
@@ -129,7 +136,7 @@ function App() {
       }
     }, 250)
     return () => clearTimeout(timer)
-  }, [settings.start_on_login])
+  }, [settings.start_on_login, settings.hotkey.binding, settings.hotkey.chord_timeout_ms])
 
   useEffect(() => {
     const timer = setTimeout(async () => {
@@ -228,7 +235,13 @@ function App() {
         {activeTab === 'general' && (
           <GeneralSection
             startOnLogin={settings.start_on_login}
+            hotkeyBinding={settings.hotkey.binding}
             onChange={(next) => setSettings((prev) => ({ ...prev, start_on_login: next }))}
+            onHotkeyBindingChange={(next) =>
+              setSettings((prev) => ({
+                ...prev,
+                hotkey: { ...prev.hotkey, binding: next },
+              }))}
             onReset={() => void runReset('general')}
             saving={savingKey === 'general'}
           />

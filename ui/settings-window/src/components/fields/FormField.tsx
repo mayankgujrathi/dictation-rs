@@ -8,12 +8,12 @@ type FormFieldProps = {
 
 export function FormField({ label, description, children }: FormFieldProps) {
   return (
-    <label className="grid gap-2 rounded-xl border border-slate-700/60 bg-slate-900/50 p-3">
+    <div className="grid gap-2 rounded-xl border border-slate-700/60 bg-slate-900/50 p-3">
       <div>
         <div className="text-sm font-medium text-slate-100">{label}</div>
         <div className="text-xs text-slate-400">{description}</div>
       </div>
       {children}
-    </label>
+    </div>
   )
 }

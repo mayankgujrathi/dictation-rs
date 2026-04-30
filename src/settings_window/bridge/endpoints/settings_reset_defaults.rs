@@ -38,7 +38,7 @@ pub fn handle(
     };
 
   let result = match payload.scope.as_str() {
-    "general" => settings::reset_start_on_login_default(),
+    "general" => settings::reset_general_defaults(),
     "logging" => settings::reset_logging_default(),
     "transcription" => settings::reset_transcription_default(),
     "all" => settings::reset_all_defaults(),

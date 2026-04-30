@@ -14,8 +14,8 @@ The Settings UI groups options into **General**, **Logging**, and **Transcriptio
 ### General
 
 - `start_on_login`: Launch Vocoflow automatically on user sign-in.
-
-UI label: **Start on login**
+- `hotkey.binding`: Global trigger string supporting keyboard/mouse and chords (examples: ``Ctrl+ ` ``, `Ctrl+K, C`, `Ctrl+Mouse4`).
+- `hotkey.chord_timeout_ms`: Max delay (ms) allowed between chord steps.
 
 ### Logging
 

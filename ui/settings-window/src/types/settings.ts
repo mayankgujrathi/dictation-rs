@@ -17,8 +17,18 @@ export type TranscriptionSettings = {
   llm_custom_prompt: string
 }
 
+export type HotkeySettings = {
+  binding: string
+  chord_timeout_ms: number
+  parsed: {
+    normalized: string
+    sequence: Array<unknown>
+  }
+}
+
 export type AppSettings = {
   start_on_login: boolean
+  hotkey: HotkeySettings
   logging: LoggingSettings
   transcription: TranscriptionSettings
 }

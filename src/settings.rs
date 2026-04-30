@@ -9,6 +9,7 @@ use tracing::{debug, info};
 use crate::app::{
   DEFAULT_LLM_BASE_URL, DEFAULT_LLM_CUSTOM_PROMPT, DEFAULT_LLM_MODEL_NAME,
 };
+use crate::hotkey::{ParsedHotkey, parse_hotkey_binding};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -25,8 +26,17 @@ pub enum TranscriptReformattingLevel {
 #[serde(default)]
 pub struct AppSettings {
   pub start_on_login: bool,
+  pub hotkey: HotkeySettings,
   pub logging: LoggingSettings,
   pub transcription: TranscriptionSettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct HotkeySettings {
+  pub binding: String,
+  pub parsed: ParsedHotkey,
+  pub chord_timeout_ms: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -71,6 +81,21 @@ impl Default for LoggingSettings {
       app_log_max_lines: 1000,
       trace_file_limit: 100,
       enable_debug_logs: false,
+    }
+  }
+}
+
+impl Default for HotkeySettings {
+  fn default() -> Self {
+    let binding = "Ctrl+`".to_string();
+    let parsed = parse_hotkey_binding(&binding).unwrap_or(ParsedHotkey {
+      normalized: "Ctrl+`".to_string(),
+      sequence: Vec::new(),
+    });
+    Self {
+      binding,
+      parsed,
+      chord_timeout_ms: 1200,
     }
   }
 }
@@ -207,6 +232,33 @@ pub fn update_start_on_login(
   Ok(current())
 }
 
+pub fn update_hotkey(
+  binding: String,
+  chord_timeout_ms: Option<u64>,
+) -> Result<AppSettings, String> {
+  let parsed = parse_hotkey_binding(&binding)?;
+  initialize();
+  let Some(lock) = SETTINGS.get() else {
+    return Err("settings store unavailable".to_string());
+  };
+
+  let snapshot = {
+    let mut guard = lock
+      .write()
+      .map_err(|_| "settings lock poisoned".to_string())?;
+    guard.hotkey.binding = binding;
+    guard.hotkey.parsed = parsed;
+    if let Some(timeout) = chord_timeout_ms {
+      guard.hotkey.chord_timeout_ms = timeout.clamp(100, 5000);
+    }
+    guard.clone()
+  };
+
+  write_settings(&settings_path(), &snapshot)?;
+  let _ = refresh_from_disk()?;
+  Ok(current())
+}
+
 pub fn persist_start_on_login_from_system(
   start_on_login: bool,
 ) -> Result<AppSettings, String> {
@@ -288,8 +340,25 @@ pub fn update_transcription(
   Ok(current())
 }
 
-pub fn reset_start_on_login_default() -> Result<AppSettings, String> {
-  update_start_on_login(AppSettings::default().start_on_login)
+pub fn reset_general_defaults() -> Result<AppSettings, String> {
+  let defaults = AppSettings::default();
+  initialize();
+  let Some(lock) = SETTINGS.get() else {
+    return Err("settings store unavailable".to_string());
+  };
+
+  let snapshot = {
+    let mut guard = lock
+      .write()
+      .map_err(|_| "settings lock poisoned".to_string())?;
+    guard.start_on_login = defaults.start_on_login;
+    guard.hotkey = defaults.hotkey;
+    guard.clone()
+  };
+
+  write_settings(&settings_path(), &snapshot)?;
+  let _ = refresh_from_disk()?;
+  Ok(current())
 }
 
 pub fn reset_logging_default() -> Result<AppSettings, String> {

@@ -50,6 +50,11 @@ pub static ROUTES: &[RouteDef] = route_table!(
   ),
   (
     "POST",
+    "/settings/update/hotkey",
+    super::endpoints::settings_update_hotkey::handle
+  ),
+  (
+    "POST",
     "/settings/update/logging",
     super::endpoints::settings_update_logging::handle
   ),
