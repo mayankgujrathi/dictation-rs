@@ -26,11 +26,6 @@ Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 The Parakeet models are provided under the Creative Commons Attribution 4.0 International License.
 By using these models, you agree to abide by the terms of the license, including proper attribution to NVIDIA.
 
-## Practical Compliance Notes
-
-- Keep NVIDIA/Parakeet attribution in project docs when distributing builds using these model assets.
-- Review the linked CC-BY-4.0 terms for attribution requirements in your distribution context.
-
 ## Related Docs
 
 - [Architecture](ARCHITECTURE.md)

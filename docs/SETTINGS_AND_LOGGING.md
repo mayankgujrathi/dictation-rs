@@ -89,7 +89,6 @@ LLM reformatting uses focused-app context (window title/app metadata) when enabl
 ## Notes
 
 - Logging settings are refreshed at runtime.
-- Default settings are intentionally omitted from the main README for faster user skimming.
 
 ## Related Docs
 
