@@ -64,10 +64,6 @@ jobs:
         with:
           save-if: ${{ github.ref == 'refs/heads/main' && runner.os != 'Windows' }}
 
-      - name: Initialize MSVC developer command prompt (Windows)
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-
       - name: macOS toolchain and SDK diagnostics
         if: runner.os == 'macOS'
         shell: bash
@@ -905,9 +901,12 @@ jobs:
           exit-code: '1'
           severity: CRITICAL,HIGH
 
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v5
-        with:
-          name: vocoflow-${{ steps.tag_base.outputs.value }}-${{ matrix.target }}-${{ github.sha }}
-          path: dist/
-          if-no-files-found: error
+      - name: Upload build artifact (non-Windows fallback archive)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          ARCHIVE="artifacts/vocoflow-${{ steps.tag_base.outputs.value }}-${{ matrix.target }}-${{ github.sha }}.tar.gz"
+          tar -czf "$ARCHIVE" dist/
+          echo "Created fallback artifact archive: $ARCHIVE"

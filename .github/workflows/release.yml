@@ -63,10 +63,6 @@ jobs:
         with:
           save-if: ${{ github.ref == 'refs/heads/main' && runner.os != 'Windows' }}
 
-      - name: Initialize MSVC developer command prompt (Windows)
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-
       - name: macOS toolchain and SDK diagnostics
         if: runner.os == 'macOS'
         shell: bash
