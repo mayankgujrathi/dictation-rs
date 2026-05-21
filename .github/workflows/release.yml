@@ -39,7 +39,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -865,7 +865,7 @@ jobs:
       - name: Supply-chain filesystem scan (Trivy)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          trivy-version: v0.70.0
+          version: v0.70.0
           scan-type: fs
           scan-ref: .
           format: table
@@ -1146,7 +1146,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download wingetcreate
         shell: pwsh
