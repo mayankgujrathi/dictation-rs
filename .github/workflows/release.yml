@@ -852,6 +852,16 @@ jobs:
             --header "x-apikey: ${VIRUSTOTAL_API_KEY}" \
             --form "file=@${FILE}" > /dev/null
 
+      - name: Dependency version diagnostics (pre-Trivy)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Resolved Cargo.lock versions for security-sensitive crates:"
+          awk '
+            /^name = "(openssl|rustls-webpki)"$/ { pkg=$3; gsub(/"/, "", pkg); want=1; next }
+            want && /^version = / { ver=$3; gsub(/"/, "", ver); printf "- %s: %s\n", pkg, ver; want=0 }
+          ' Cargo.lock
+
       - name: Supply-chain filesystem scan (Trivy)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
