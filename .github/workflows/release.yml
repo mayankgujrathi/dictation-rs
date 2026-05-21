@@ -797,6 +797,14 @@ jobs:
           $ErrorActionPreference = "Stop"
           $target = "dist/vocoflow-${{ github.ref_name }}-windows-installer.exe"
 
+          $status = $null
+          try {
+            $status = Get-MpComputerStatus -ErrorAction Stop
+            Write-Host "Defender status: AMServiceEnabled=$($status.AMServiceEnabled) AntispywareEnabled=$($status.AntispywareEnabled) AntivirusEnabled=$($status.AntivirusEnabled) RealTimeProtectionEnabled=$($status.RealTimeProtectionEnabled)"
+          } catch {
+            Write-Warning "Get-MpComputerStatus unavailable: $($_.Exception.Message)"
+          }
+
           $baselineCount = $null
           try {
             $baselineCount = @((Get-MpThreatDetection -ErrorAction Stop)).Count
@@ -805,9 +813,12 @@ jobs:
           }
 
           $scanRan = $false
+          $runnerLimitation = $false
+          $scanMethod = "none"
           try {
             Start-MpScan -ScanType CustomScan -ScanPath $target -ErrorAction Stop
             $scanRan = $true
+            $scanMethod = "Start-MpScan"
             Write-Host "Windows Defender scan completed via Start-MpScan"
           } catch {
             Write-Warning "Start-MpScan failed: $($_.Exception.Message)"
@@ -817,14 +828,19 @@ jobs:
               & $defender -Scan -ScanType 3 -File $target
               if ($LASTEXITCODE -eq 0) {
                 $scanRan = $true
+                $scanMethod = "MpCmdRun"
                 Write-Host "Windows Defender scan completed via MpCmdRun.exe"
               } else {
-                Write-Warning "MpCmdRun returned exit code $LASTEXITCODE; treating as runner/tooling issue unless threat detection confirms malware."
+                $runnerLimitation = $true
+                Write-Warning "MpCmdRun returned exit code $LASTEXITCODE (common hosted-runner tooling issue, e.g. hr=0x80508023). Treating as runner limitation unless threat detection confirms malware."
               }
             } else {
+              $runnerLimitation = $true
               Write-Warning "Windows Defender CLI not found at $defender"
             }
           }
+
+          Write-Host "Defender scan summary: scan_attempted=true scan_completed=$scanRan method=$scanMethod runner_limitation=$runnerLimitation"
 
           if (-not $scanRan) {
             Write-Warning "Windows Defender scan could not be completed reliably on this runner. Continuing without hard-failing this job."
