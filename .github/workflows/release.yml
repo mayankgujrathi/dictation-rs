@@ -500,8 +500,24 @@ jobs:
 
           New-Item -ItemType Directory -Force -Path "dist/redist" | Out-Null
 
+          $vsWhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vsWhere)) {
+            throw "vswhere.exe not found at $vsWhere"
+          }
+          $vsInstallPath = & $vsWhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vsInstallPath) {
+            throw "Visual Studio installation with VC Tools not found via vswhere"
+          }
+          $dumpbinExe = Get-ChildItem -Path (Join-Path $vsInstallPath "VC\Tools\MSVC") -Filter dumpbin.exe -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match 'Hostx64\\x64\\dumpbin\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $dumpbinExe) {
+            throw "dumpbin.exe not found under $vsInstallPath\\VC\\Tools\\MSVC"
+          }
+
           function Get-PortableDependents([string]$binaryPath) {
-            $lines = & dumpbin /nologo /dependents $binaryPath 2>$null
+            $lines = & $dumpbinExe /nologo /dependents $binaryPath 2>$null
             if ($LASTEXITCODE -ne 0) { return @() }
             $deps = @()
             foreach ($line in $lines) {
