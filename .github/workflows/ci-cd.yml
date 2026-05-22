@@ -942,3 +942,99 @@ jobs:
           ARCHIVE="artifacts/vocoflow-${{ steps.tag_base.outputs.value }}-${{ matrix.target }}-${{ github.sha }}.tar.gz"
           tar -czf "$ARCHIVE" dist/
           echo "Created fallback artifact archive: $ARCHIVE"
+
+  brew-linux-smoke:
+    name: Brew Linux Smoke (${{ matrix.distro }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: ubuntu
+            container: ubuntu:latest
+          - distro: arch
+            container: archlinux:latest
+          - distro: fedora
+            container: fedora:latest
+    container:
+      image: ${{ matrix.container }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install distro prerequisites for Homebrew bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.distro }}" in
+            ubuntu)
+              apt-get update
+              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                ca-certificates curl file git sudo xz-utils build-essential procps
+              ;;
+            arch)
+              pacman -Syu --noconfirm
+              pacman -S --noconfirm --needed \
+                base-devel ca-certificates curl file git sudo which procps-ng
+              ;;
+            fedora)
+              dnf install -y \
+                ca-certificates curl file git sudo which procps-ng gcc gcc-c++ make
+              ;;
+            *)
+              echo "Unsupported distro: ${{ matrix.distro }}"
+              exit 1
+              ;;
+          esac
+
+      - name: Install Homebrew
+        shell: bash
+        run: |
+          set -euo pipefail
+          useradd -m -s /bin/bash linuxbrew || true
+          chown -R linuxbrew:linuxbrew "$GITHUB_WORKSPACE"
+          su - linuxbrew -c 'NONINTERACTIVE=1 CI=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+
+      - name: Brew install + formula test
+        shell: bash
+        run: |
+          set -euo pipefail
+          su - linuxbrew -c '
+            eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+            brew --version
+            brew install --build-from-source "$GITHUB_WORKSPACE/homebrew-tap/Formula/vocoflow.rb"
+            brew test vocoflow
+          '
+
+  brew-macos-smoke:
+    name: Brew macOS Smoke (macos-14)
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Brew install formula from repo
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew --version
+          brew install --build-from-source ./homebrew-tap/Formula/vocoflow.rb
+
+      - name: Clear quarantine from installed app bundle (unsigned app handling)
+        shell: bash
+        run: |
+          set -euo pipefail
+          PREFIX="$(brew --prefix)"
+          APP_PATH="$(find "$PREFIX/Cellar/vocoflow" -type d -path '*/libexec/Vocoflow.app' | head -n 1 || true)"
+          if [[ -n "$APP_PATH" ]]; then
+            xattr -dr com.apple.quarantine "$APP_PATH" || true
+            xattr -dr com.apple.quarantine "$(dirname "$APP_PATH")" || true
+          else
+            echo "Vocoflow.app not found under Cellar/libexec; continuing with brew test"
+          fi
+
+      - name: Brew test formula
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew test vocoflow
