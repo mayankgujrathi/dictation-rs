@@ -1045,8 +1045,8 @@ jobs:
           su - linuxbrew -c '
             eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
             brew --version
-            brew install --build-from-source "$GITHUB_WORKSPACE/homebrew-tap/Formula/vocoflow.rb"
-            brew test vocoflow
+            brew install mayankgujrathi/tap/vocoflow
+            brew test mayankgujrathi/tap/vocoflow
           '
 
   brew-macos-smoke:
@@ -1061,7 +1061,7 @@ jobs:
         run: |
           set -euo pipefail
           brew --version
-          brew install --build-from-source ./homebrew-tap/Formula/vocoflow.rb
+          brew install mayankgujrathi/tap/vocoflow
 
       - name: Clear quarantine from installed app bundle (unsigned app handling)
         shell: bash
@@ -1080,7 +1080,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          brew test vocoflow
+          brew test mayankgujrathi/tap/vocoflow
 
   brew-publish:
     name: Publish to Homebrew Tap
