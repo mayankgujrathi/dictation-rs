@@ -1045,8 +1045,9 @@ jobs:
           su - linuxbrew -c '
             eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
             brew --version
-            brew install mayankgujrathi/tap/vocoflow
-            brew test mayankgujrathi/tap/vocoflow
+            brew update
+            HOMEBREW_NO_AUTO_UPDATE=1 brew reinstall mayankgujrathi/tap/vocoflow || HOMEBREW_NO_AUTO_UPDATE=1 brew install mayankgujrathi/tap/vocoflow
+            HOMEBREW_NO_AUTO_UPDATE=1 brew test mayankgujrathi/tap/vocoflow
           '
 
   brew-macos-smoke:
@@ -1061,7 +1062,8 @@ jobs:
         run: |
           set -euo pipefail
           brew --version
-          brew install mayankgujrathi/tap/vocoflow
+          brew update
+          HOMEBREW_NO_AUTO_UPDATE=1 brew reinstall mayankgujrathi/tap/vocoflow || HOMEBREW_NO_AUTO_UPDATE=1 brew install mayankgujrathi/tap/vocoflow
 
       - name: Clear quarantine from installed app bundle (unsigned app handling)
         shell: bash
@@ -1080,7 +1082,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          brew test mayankgujrathi/tap/vocoflow
+          HOMEBREW_NO_AUTO_UPDATE=1 brew test mayankgujrathi/tap/vocoflow
 
   brew-publish:
     name: Publish to Homebrew Tap
@@ -1220,7 +1222,10 @@ jobs:
 
             def install
               if OS.mac?
-                libexec.install "Vocoflow.app"
+                app_bundle = Dir["*.app"].first || Dir["**/*.app"].first
+                raise "macOS app bundle (*.app) not found in formula payload" if app_bundle.nil?
+
+                libexec.install app_bundle => "Vocoflow.app"
                 (bin/"vocoflow").write_env_script libexec/"Vocoflow.app/Contents/MacOS/vocoflow"
               else
                 install_linux_deps
