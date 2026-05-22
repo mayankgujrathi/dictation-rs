@@ -1223,15 +1223,24 @@ jobs:
             def install
               if OS.mac?
                 app_bundle = buildpath.glob("*.app").first || buildpath.glob("**/*.app").first
-                raise "macOS app bundle (*.app) not found in formula payload" if app_bundle.nil?
+                if app_bundle
+                  cp_r app_bundle, libexec/"Vocoflow.app"
+                  mac_exe = libexec/"Vocoflow.app/Contents/MacOS/vocoflow"
+                else
+                  fallback_exe = buildpath.glob("**/vocoflow").find { |p| p.file? && p.executable? }
+                  raise "macOS app bundle (*.app) or fallback vocoflow executable not found in formula payload" if fallback_exe.nil?
 
-                libexec.install app_bundle => "Vocoflow.app"
-                (bin/"vocoflow").write_env_script libexec/"Vocoflow.app/Contents/MacOS/vocoflow"
+                  cp fallback_exe, libexec/"vocoflow"
+                  (libexec/"vocoflow").chmod 0755
+                  mac_exe = libexec/"vocoflow"
+                end
+
+                (bin/"vocoflow").write_env_script mac_exe
               else
                 install_linux_deps
-                appimage = Dir["*.AppImage"].first
+                appimage = buildpath.glob("*.AppImage").first || buildpath.glob("**/*.AppImage").first
                 raise "Linux AppImage not found in formula payload" if appimage.nil?
-                libexec.install appimage => "vocoflow.AppImage"
+                cp appimage, libexec/"vocoflow.AppImage"
                 (libexec/"vocoflow.AppImage").chmod 0755
                 (bin/"vocoflow").write_env_script libexec/"vocoflow.AppImage"
 
@@ -1250,7 +1259,7 @@ jobs:
                 system "bash", "-lc", "cd #{buildpath} && #{libexec}/vocoflow.AppImage --appimage-extract vocoflow.png >/dev/null 2>&1 || true"
                 extracted_icon = buildpath/"squashfs-root/vocoflow.png"
                 if extracted_icon.exist?
-                  (share/"icons/hicolor/256x256/apps").install extracted_icon => "vocoflow.png"
+                  cp extracted_icon, share/"icons/hicolor/256x256/apps/vocoflow.png"
                 else
                   opoo "Could not extract vocoflow icon from AppImage; desktop entry will use system fallback icon."
                 end
