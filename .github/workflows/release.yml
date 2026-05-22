@@ -1225,24 +1225,32 @@ jobs:
                 app_bundle = buildpath.glob("*.app").first || buildpath.glob("**/*.app").first
                 if app_bundle
                   cp_r app_bundle, libexec/"Vocoflow.app"
-                  mac_exe = libexec/"Vocoflow.app/Contents/MacOS/vocoflow"
+                  cp libexec/"Vocoflow.app/Contents/MacOS/vocoflow", libexec/"vocoflow"
+                  (libexec/"vocoflow").chmod 0755
                 else
                   fallback_exe = buildpath.glob("**/vocoflow").find { |p| p.file? && p.executable? }
                   raise "macOS app bundle (*.app) or fallback vocoflow executable not found in formula payload" if fallback_exe.nil?
 
                   cp fallback_exe, libexec/"vocoflow"
                   (libexec/"vocoflow").chmod 0755
-                  mac_exe = libexec/"vocoflow"
                 end
 
-                (bin/"vocoflow").write_env_script mac_exe
+                (bin/"vocoflow").write <<~SH
+                  #!/bin/bash
+                  exec "#{libexec}/vocoflow" "$@"
+                SH
+                (bin/"vocoflow").chmod 0755
               else
                 install_linux_deps
                 appimage = buildpath.glob("*.AppImage").first || buildpath.glob("**/*.AppImage").first
                 raise "Linux AppImage not found in formula payload" if appimage.nil?
                 cp appimage, libexec/"vocoflow.AppImage"
                 (libexec/"vocoflow.AppImage").chmod 0755
-                (bin/"vocoflow").write_env_script libexec/"vocoflow.AppImage"
+                (bin/"vocoflow").write <<~SH
+                  #!/bin/bash
+                  exec "#{libexec}/vocoflow.AppImage" "$@"
+                SH
+                (bin/"vocoflow").chmod 0755
 
                 desktop_file = buildpath/"vocoflow.desktop"
                 desktop_file.write <<~DESKTOP
