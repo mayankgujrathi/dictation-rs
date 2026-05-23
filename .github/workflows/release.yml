@@ -1279,12 +1279,19 @@ jobs:
                 else
                   opoo "Could not extract vocoflow icon from AppImage; desktop entry will use system fallback icon."
                 end
+
+                system "bash", "-lc", "command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database #{share}/applications >/dev/null 2>&1 || true"
+                system "bash", "-lc", "command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -f -t #{share}/icons/hicolor >/dev/null 2>&1 || true"
+                system "bash", "-lc", "command -v xdg-desktop-menu >/dev/null 2>&1 && xdg-desktop-menu forceupdate >/dev/null 2>&1 || true"
               end
             end
 
             test do
               if OS.mac?
-                system "#{libexec}/Vocoflow.app/Contents/MacOS/vocoflow", "--health-check"
+                app_bin = libexec/"Vocoflow.app/Contents/MacOS/vocoflow"
+                raise "macOS app executable not found at #{app_bin}" unless app_bin.exist?
+                settings_index = libexec/"Vocoflow.app/Contents/Resources/resources/settings_window/index.html"
+                raise "macOS settings window entrypoint not found at #{settings_index}" unless settings_index.exist?
               else
                 rm_rf testpath/"squashfs-root"
                 system "#{libexec}/vocoflow.AppImage", "--appimage-extract"

@@ -134,13 +134,85 @@ fn main() -> eframe::Result<()> {
   // Shared exit flag
   let should_exit = Arc::new(AtomicBool::new(false));
 
-  // Set up tray icon on main thread
-  let _tray_manager = tray::TrayManager::new(should_exit.clone());
-  info!("tray initialized");
+  let disable_tray = std::env::var("DICTATION_DISABLE_TRAY")
+    .ok()
+    .map(|v| {
+      matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes")
+    })
+    .unwrap_or(false);
 
-  // Spawn background thread for tray event polling
-  tray::spawn_poll_thread(should_exit.clone());
-  debug!("tray polling thread spawned");
+  #[cfg(target_os = "linux")]
+  {
+    info!(
+      xdg_session_type = ?std::env::var("XDG_SESSION_TYPE").ok(),
+      wayland_display = ?std::env::var("WAYLAND_DISPLAY").ok(),
+      display = ?std::env::var("DISPLAY").ok(),
+      xdg_current_desktop = ?std::env::var("XDG_CURRENT_DESKTOP").ok(),
+      desktop_session = ?std::env::var("DESKTOP_SESSION").ok(),
+      "linux desktop session diagnostics"
+    );
+  }
+
+  // Set up tray icon on main thread (best-effort; do not crash app on Linux tray backend issues)
+  let _tray_manager = if disable_tray {
+    warn!("tray initialization disabled by DICTATION_DISABLE_TRAY");
+    None
+  } else {
+    #[cfg(target_os = "linux")]
+    {
+      let has_wayland = std::env::var("WAYLAND_DISPLAY")
+        .ok()
+        .is_some_and(|v| !v.trim().is_empty());
+      let has_x11 = std::env::var("DISPLAY")
+        .ok()
+        .is_some_and(|v| !v.trim().is_empty());
+      if !has_wayland && !has_x11 {
+        warn!(
+          "linux GUI session not detected (WAYLAND_DISPLAY/DISPLAY missing); skipping tray initialization"
+        );
+        None
+      } else {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+          tray::TrayManager::new(should_exit.clone())
+        })) {
+          Ok(manager) => {
+            info!("tray initialized");
+            Some(manager)
+          }
+          Err(_) => {
+            error!(
+              "tray initialization panicked; continuing without tray (likely desktop backend/session mismatch)"
+            );
+            None
+          }
+        }
+      }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+      match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        tray::TrayManager::new(should_exit.clone())
+      })) {
+        Ok(manager) => {
+          info!("tray initialized");
+          Some(manager)
+        }
+        Err(_) => {
+          error!("tray initialization panicked; continuing without tray");
+          None
+        }
+      }
+    }
+  };
+
+  if _tray_manager.is_some() {
+    // Spawn background thread for tray event polling
+    tray::spawn_poll_thread(should_exit.clone());
+    debug!("tray polling thread spawned");
+  } else {
+    warn!("tray polling thread not started because tray is unavailable");
+  }
 
   // Recording state
   let recording_state = audio::RecordingState::new();
