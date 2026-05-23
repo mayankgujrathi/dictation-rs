@@ -1230,6 +1230,8 @@ jobs:
                   cp_r app_bundle, libexec/"Vocoflow.app"
                   cp libexec/"Vocoflow.app/Contents/MacOS/vocoflow", libexec/"vocoflow"
                   (libexec/"vocoflow").chmod 0755
+                  app_resources = libexec/"Vocoflow.app/Contents/Resources/resources"
+                  cp_r app_resources, libexec/"resources" if app_resources.exist?
                 else
                   fallback_exe = buildpath.glob("**/vocoflow").find { |p| p.file? && p.executable? }
                   raise "macOS app bundle (*.app) or fallback vocoflow executable not found in formula payload" if fallback_exe.nil?
@@ -1280,7 +1282,17 @@ jobs:
             end
 
             test do
-              system "#{bin}/vocoflow", "--health-check"
+              if OS.mac?
+                system "#{bin}/vocoflow", "--health-check"
+              else
+                rm_rf testpath/"squashfs-root"
+                system "#{libexec}/vocoflow.AppImage", "--appimage-extract"
+                extracted_bin = testpath/"squashfs-root/usr/bin/vocoflow"
+                raise "Extracted AppImage binary not found at #{extracted_bin}" unless extracted_bin.exist?
+
+                ENV["DICTATION_DISABLE_HOTKEY_LISTENER"] = "1"
+                system extracted_bin, "--health-check"
+              end
             end
           end
           FORMULA
