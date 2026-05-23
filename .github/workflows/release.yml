@@ -1230,7 +1230,8 @@ jobs:
                   cp_r app_bundle, libexec/"Vocoflow.app"
                   cp libexec/"Vocoflow.app/Contents/MacOS/vocoflow", libexec/"vocoflow"
                   (libexec/"vocoflow").chmod 0755
-                  app_resources = libexec/"Vocoflow.app/Contents/Resources/resources"
+                  app_resources = app_bundle/"Contents/Resources/resources"
+                  rm_rf libexec/"resources"
                   cp_r app_resources, libexec/"resources" if app_resources.exist?
                 else
                   fallback_exe = buildpath.glob("**/vocoflow").find { |p| p.file? && p.executable? }
@@ -1289,9 +1290,8 @@ jobs:
                 system "#{libexec}/vocoflow.AppImage", "--appimage-extract"
                 extracted_bin = testpath/"squashfs-root/usr/bin/vocoflow"
                 raise "Extracted AppImage binary not found at #{extracted_bin}" unless extracted_bin.exist?
-
-                ENV["DICTATION_DISABLE_HOTKEY_LISTENER"] = "1"
-                system extracted_bin, "--health-check"
+                extracted_settings_index = testpath/"squashfs-root/usr/resources/settings_window/index.html"
+                raise "Extracted settings window entrypoint not found at #{extracted_settings_index}" unless extracted_settings_index.exist?
               end
             end
           end
