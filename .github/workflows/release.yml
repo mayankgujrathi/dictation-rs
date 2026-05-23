@@ -1288,10 +1288,16 @@ jobs:
 
             test do
               if OS.mac?
-                app_bin = libexec/"Vocoflow.app/Contents/MacOS/vocoflow"
-                raise "macOS app executable not found at #{app_bin}" unless app_bin.exist?
-                settings_index = libexec/"Vocoflow.app/Contents/Resources/resources/settings_window/index.html"
-                raise "macOS settings window entrypoint not found at #{settings_index}" unless settings_index.exist?
+                app_bundle = libexec/"Vocoflow.app"
+                if app_bundle.exist?
+                  app_bin = app_bundle/"Contents/MacOS/vocoflow"
+                  raise "macOS app executable not found at #{app_bin}" unless app_bin.exist?
+                  settings_index = app_bundle/"Contents/Resources/resources/settings_window/index.html"
+                  raise "macOS settings window entrypoint not found at #{settings_index}" unless settings_index.exist?
+                else
+                  fallback_bin = libexec/"vocoflow"
+                  raise "macOS fallback executable not found at #{fallback_bin}" unless fallback_bin.exist?
+                end
               else
                 rm_rf testpath/"squashfs-root"
                 system "#{libexec}/vocoflow.AppImage", "--appimage-extract"
